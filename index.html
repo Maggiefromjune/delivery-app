@@ -84,7 +84,11 @@
   .btn-sm { padding: 5px 10px; font-size: 12px; }
   .btn-danger { color: var(--red); border-color: var(--red-light); }
   .btn-danger:hover { background: var(--red-light); }
-  .copy-select { padding: 5px 8px; border: var(--border); border-radius: var(--radius-sm); background: #fff; color: var(--gray-800); font-size: 12px; font-family: inherit; max-width: 92px; }
+  .copy-menu { position: relative; display: inline-flex; }
+  .copy-options { position: absolute; right: 0; top: calc(100% + 4px); display: none; min-width: 104px; padding: 4px; border: var(--border); border-radius: var(--radius-sm); background: #fff; box-shadow: var(--shadow-md); z-index: 20; }
+  .copy-menu.open .copy-options { display: grid; gap: 4px; }
+  .copy-options button { width: 100%; justify-content: flex-start; border: none; background: transparent; box-shadow: none; }
+  .address-cell { max-width: 220px; white-space: normal; overflow-wrap: anywhere; word-break: break-word; line-height: 1.5; }
   
   /* Forms */
   .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -392,63 +396,107 @@
       
       <div class="share-box hidden" id="share-box">
         <div class="font-600 text-sm" style="color:#0d652d;">✅ 分享链接已生成</div>
-        <div class="share-url" id="share-url"></div>
+        <div class="text-xs text-muted mt-16">送货单链接</div>
+        <div class="share-url" id="delivery-share-url"></div>
+        <div class="text-xs text-muted mt-16">收货单链接</div>
+        <div class="share-url" id="pickup-share-url"></div>
+        <div class="share-url hidden" id="share-url"></div>
         <div class="flex gap-8 mt-16">
-          <button class="btn btn-sm" onclick="copyShareLink()">📋 复制链接</button>
-          <button class="btn btn-sm" onclick="openSenderForm()">👁 预览表单</button>
+          <button class="btn btn-sm" onclick="copyShareLink('delivery')">📋 复制送货单</button>
+          <button class="btn btn-sm" onclick="copyShareLink('pickup')">📋 复制收货单</button>
+          <button class="btn btn-sm" onclick="openSenderForm('delivery')">👁 预览送货单</button>
+          <button class="btn btn-sm" onclick="openSenderForm('pickup')">👁 预览收货单</button>
         </div>
       </div>
     </div>
   </div>
   
-  <!-- Embedded sender form preview -->
-  <div class="card mt-24 hidden" id="sender-form-preview">
-    <div class="card-title">📝 寄件表单（预览 / 客户视图）</div>
-    <div class="alert alert-blue">这是客户看到的填写页面。</div>
+  <!-- Embedded delivery form preview -->
+  <div class="card mt-24 hidden sender-form-preview" id="delivery-form-preview">
+    <div class="card-title">📝 送货单预览（客户视图）</div>
+    <div class="alert alert-blue">这是客户填写送货信息的页面。</div>
+    
+    <div class="form-grid">
+      <div class="form-group">
+        <label>收件人姓名 *</label>
+        <input type="text" id="d-receiver-name" placeholder="收件人">
+      </div>
+      <div class="form-group">
+        <label>收件人电话 *</label>
+        <input type="tel" id="d-receiver-phone" placeholder="138xxxx9999">
+      </div>
+      <div class="form-group form-full">
+        <label>送货地址 *</label>
+        <input type="text" id="d-delivery-addr" placeholder="请填写详细送货地址">
+      </div>
+      <div class="form-group">
+        <label>物品名称</label>
+        <input type="text" id="d-goods" placeholder="文件、货物...">
+      </div>
+      <div class="form-group">
+        <label>重量估算 (kg)</label>
+        <input type="number" id="d-weight" placeholder="0.5" step="0.1" min="0">
+      </div>
+      <div class="form-group">
+        <label>期望送达日期</label>
+        <input type="date" id="d-date">
+      </div>
+      <div class="form-group form-full">
+        <label>备注</label>
+        <textarea id="d-note" placeholder="门牌、门禁、特殊要求..."></textarea>
+      </div>
+    </div>
+    <button class="btn btn-primary mt-16" onclick="submitDeliveryForm()">提交送货单</button>
+  </div>
+
+  <!-- Embedded pickup form preview -->
+  <div class="card mt-24 hidden sender-form-preview" id="pickup-form-preview">
+    <div class="card-title">📝 收货单预览（客户视图）</div>
+    <div class="alert alert-blue">这是客户填写收货/取件信息的页面。</div>
     
     <div class="form-grid">
       <div class="form-group">
         <label>寄件人姓名 *</label>
-        <input type="text" id="s-sender-name" placeholder="您的姓名">
+        <input type="text" id="p-sender-name" placeholder="您的姓名">
       </div>
       <div class="form-group">
         <label>寄件人电话 *</label>
-        <input type="tel" id="s-sender-phone" placeholder="138xxxx8888">
+        <input type="tel" id="p-sender-phone" placeholder="138xxxx8888">
       </div>
       <div class="form-group form-full">
         <label>取件地址 *</label>
-        <input type="text" id="s-pickup-addr" placeholder="请填写详细取件地址">
+        <input type="text" id="p-pickup-addr" placeholder="请填写详细取件地址">
       </div>
       <div class="form-group">
         <label>收件人姓名 *</label>
-        <input type="text" id="s-receiver-name" placeholder="收件人">
+        <input type="text" id="p-receiver-name" placeholder="收件人">
       </div>
       <div class="form-group">
         <label>收件人电话 *</label>
-        <input type="tel" id="s-receiver-phone" placeholder="138xxxx9999">
+        <input type="tel" id="p-receiver-phone" placeholder="138xxxx9999">
       </div>
       <div class="form-group form-full">
         <label>收件地址 *</label>
-        <input type="text" id="s-delivery-addr" placeholder="请填写详细收件地址">
+        <input type="text" id="p-delivery-addr" placeholder="请填写详细收件地址">
       </div>
       <div class="form-group">
         <label>物品名称</label>
-        <input type="text" id="s-goods" placeholder="文件、衣物...">
+        <input type="text" id="p-goods" placeholder="文件、衣物...">
       </div>
       <div class="form-group">
         <label>重量估算 (kg)</label>
-        <input type="number" id="s-weight" placeholder="0.5" step="0.1" min="0">
+        <input type="number" id="p-weight" placeholder="0.5" step="0.1" min="0">
       </div>
       <div class="form-group">
         <label>期望取件时间</label>
-        <input type="datetime-local" id="s-pickup-time">
+        <input type="datetime-local" id="p-pickup-time">
       </div>
       <div class="form-group form-full">
         <label>备注</label>
-        <textarea id="s-note" placeholder="其他特殊要求..."></textarea>
+        <textarea id="p-note" placeholder="其他特殊要求..."></textarea>
       </div>
     </div>
-    <button class="btn btn-primary mt-16" onclick="submitSenderForm()">提交寄件申请</button>
+    <button class="btn btn-primary mt-16" onclick="submitPickupForm()">提交收货单</button>
   </div>
 </div>
 
@@ -536,6 +584,7 @@ function readSenderParams() {
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   return {
     sender: search.get('sender') || hash.get('sender'),
+    form: search.get('form') || hash.get('form'),
     courier: search.get('courier') || hash.get('courier'),
     gist: search.get('gist') || hash.get('gist'),
     token: search.get('token') || hash.get('token')
@@ -776,7 +825,7 @@ function renderDashboard() {
       <tr>
         <td style="font-family:monospace;font-size:12px">${esc(o.phone || '-')}</td>
         <td>${esc(o.receiver)}</td>
-        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(o.address)}">${esc(o.address)}</td>
+        <td class="address-cell">${esc(o.address)}</td>
         <td>${statusBadge(o.status)}</td>
         <td>
           <div class="flex gap-8">
@@ -856,13 +905,27 @@ function statusLabel(status) {
 
 function orderCopyMenu(id) {
   return `
-    <select class="copy-select" onchange="copyOrderField('${esc(id)}', this.value); this.value='';" title="复制订单信息">
-      <option value="">复制...</option>
-      <option value="address">地址</option>
-      <option value="phone">手机号</option>
-      <option value="full">整单信息</option>
-    </select>
+    <span class="copy-menu">
+      <button type="button" class="btn btn-sm" onclick="toggleCopyMenu(event, this)" title="复制订单信息">复制</button>
+      <span class="copy-options">
+        <button type="button" class="btn btn-sm" onclick="copyOrderField('${esc(id)}', 'address')">地址</button>
+        <button type="button" class="btn btn-sm" onclick="copyOrderField('${esc(id)}', 'phone')">手机号</button>
+        <button type="button" class="btn btn-sm" onclick="copyOrderField('${esc(id)}', 'full')">整单信息</button>
+      </span>
+    </span>
   `;
+}
+
+function closeCopyMenus() {
+  document.querySelectorAll('.copy-menu.open').forEach(menu => menu.classList.remove('open'));
+}
+
+function toggleCopyMenu(event, button) {
+  event.stopPropagation();
+  const menu = button.closest('.copy-menu');
+  const isOpen = menu.classList.contains('open');
+  closeCopyMenus();
+  if (!isOpen) menu.classList.add('open');
 }
 
 function orderFullText(o) {
@@ -907,6 +970,7 @@ async function writeClipboard(text) {
 }
 
 async function copyOrderField(id, field) {
+  closeCopyMenus();
   if (!field) return;
   const order = loadOrders().find(o => o.id === id);
   if (!order) { toast('未找到该订单'); return; }
@@ -973,7 +1037,7 @@ function renderOrdersPage() {
       <td><span class="badge ${o.type==='delivery'?'badge-blue':'badge-amber'}">${o.type==='delivery'?'送货':'收货'}</span></td>
       <td>${esc(o.receiver)}</td>
       <td style="font-family:monospace;font-size:12px">${esc(o.phone)}</td>
-      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(o.address)}">${esc(o.address)}</td>
+      <td class="address-cell">${esc(o.address)}</td>
       <td>${esc(formatDate(o.date))}</td>
       <td>¥${esc(o.fee||0)}</td>
       <td>${statusBadge(o.status)}</td>
@@ -1174,7 +1238,7 @@ function planRoute() {
 
 function copyDidi() {
   const text = document.getElementById('didi-clipboard').textContent;
-  navigator.clipboard.writeText(text).then(() => toast('已复制到剪贴板')).catch(() => toast('请手动复制'));
+  writeClipboard(text).then(() => toast('已复制到剪贴板')).catch(() => toast('请手动复制'));
 }
 
 // ===== SENDER FORM =====
@@ -1198,30 +1262,47 @@ async function generateShareLink() {
   }
   if (!code) { toast('请填写你的送货员代码'); return; }
   if (!hasGistSettings()) { toast('请先填写 Gist ID 和 Token'); return; }
-  const url = new URL(window.location.href.split('?')[0]);
-  url.searchParams.set('sender', '1');
-  const hash = new URLSearchParams();
-  hash.set('courier', code);
-  hash.set('gist', appState.gistId);
-  hash.set('token', appState.token);
-  url.hash = hash.toString();
-  document.getElementById('share-url').textContent = url.toString();
+  const buildUrl = formType => {
+    const url = new URL(window.location.href.split('?')[0]);
+    url.searchParams.set('sender', '1');
+    const hash = new URLSearchParams();
+    hash.set('form', formType);
+    hash.set('courier', code);
+    hash.set('gist', appState.gistId);
+    hash.set('token', appState.token);
+    url.hash = hash.toString();
+    return url.toString();
+  };
+  const deliveryUrl = buildUrl('delivery');
+  const pickupUrl = buildUrl('pickup');
+  document.getElementById('delivery-share-url').textContent = deliveryUrl;
+  document.getElementById('pickup-share-url').textContent = pickupUrl;
+  document.getElementById('share-url').textContent = pickupUrl;
   document.getElementById('share-box').classList.remove('hidden');
 }
 
-function copyShareLink() {
-  const url = document.getElementById('share-url').textContent;
-  navigator.clipboard.writeText(url).then(() => toast('链接已复制！')).catch(() => toast('请手动复制链接'));
+function copyShareLink(type = 'pickup') {
+  const id = type === 'delivery' ? 'delivery-share-url' : 'pickup-share-url';
+  const url = document.getElementById(id)?.textContent || document.getElementById('share-url').textContent;
+  writeClipboard(url).then(() => toast('链接已复制！')).catch(() => toast('请手动复制链接'));
 }
 
-function openSenderForm() {
-  document.getElementById('sender-form-preview').classList.remove('hidden');
-  document.getElementById('sender-form-preview').scrollIntoView({behavior:'smooth'});
+function openSenderForm(type = 'pickup') {
+  document.querySelectorAll('.sender-form-preview').forEach(form => form.classList.add('hidden'));
+  const formId = type === 'delivery' ? 'delivery-form-preview' : 'pickup-form-preview';
+  const form = document.getElementById(formId);
+  if (!form) return;
+  if (type === 'delivery') {
+    const dateInput = document.getElementById('d-date');
+    if (dateInput && !dateInput.value) dateInput.value = today();
+  }
+  form.classList.remove('hidden');
+  form.scrollIntoView({behavior:'smooth'});
 }
 
-async function submitSenderForm() {
+async function submitDeliveryForm() {
   const get = id => document.getElementById(id).value.trim();
-  if (!get('s-sender-name') || !get('s-sender-phone') || !get('s-pickup-addr') || !get('s-receiver-name') || !get('s-delivery-addr')) {
+  if (!get('d-receiver-name') || !get('d-receiver-phone') || !get('d-delivery-addr')) {
     toast('请填写所有必填项'); return;
   }
   if (appState.isSenderMode && !hasGistSettings()) {
@@ -1230,19 +1311,16 @@ async function submitSenderForm() {
   }
   await syncFromGist({ silent: true });
   const order = {
-    id: genId(), type: 'pickup',
-    receiver: get('s-sender-name'),
-    phone: get('s-sender-phone'),
-    address: get('s-pickup-addr'),
-    goods: get('s-goods'),
-    weight: parseFloat(get('s-weight')) || 0,
-    date: today(), fee: 0, status: 'pending',
-    note: `收件人:${get('s-receiver-name')} 电话:${get('s-receiver-phone')} 送至:${get('s-delivery-addr')} 备注:${get('s-note')||'无'}`,
+    id: genId(), type: 'delivery',
+    receiver: get('d-receiver-name'),
+    phone: get('d-receiver-phone'),
+    address: get('d-delivery-addr'),
+    goods: get('d-goods'),
+    weight: parseFloat(get('d-weight')) || 0,
+    date: get('d-date') || today(), fee: 0, status: 'pending',
+    note: get('d-note'),
     source: 'sender_form',
     courierCode: appState.courierCode,
-    deliveryAddr: get('s-delivery-addr'),
-    receiverName: get('s-receiver-name'),
-    receiverPhone: get('s-receiver-phone'),
     createdAt: nowIso(),
     updatedAt: nowIso()
   };
@@ -1252,8 +1330,50 @@ async function submitSenderForm() {
     return;
   }
   renderSyncedOrders();
-  toast('寄件申请已提交，送货员刷新后即可看到。');
-  ['s-sender-name','s-sender-phone','s-pickup-addr','s-receiver-name','s-receiver-phone','s-delivery-addr','s-goods','s-weight','s-note'].forEach(id => document.getElementById(id).value = '');
+  toast('送货单已提交，送货员刷新后即可看到。');
+  ['d-receiver-name','d-receiver-phone','d-delivery-addr','d-goods','d-weight','d-note'].forEach(id => document.getElementById(id).value = '');
+}
+
+async function submitPickupForm() {
+  const get = id => document.getElementById(id).value.trim();
+  if (!get('p-sender-name') || !get('p-sender-phone') || !get('p-pickup-addr') || !get('p-receiver-name') || !get('p-delivery-addr')) {
+    toast('请填写所有必填项'); return;
+  }
+  if (appState.isSenderMode && !hasGistSettings()) {
+    toast('该表单链接缺少 Gist 同步配置，无法跨设备提交');
+    return;
+  }
+  await syncFromGist({ silent: true });
+  const order = {
+    id: genId(), type: 'pickup',
+    receiver: get('p-sender-name'),
+    phone: get('p-sender-phone'),
+    address: get('p-pickup-addr'),
+    goods: get('p-goods'),
+    weight: parseFloat(get('p-weight')) || 0,
+    date: today(), fee: 0, status: 'pending',
+    note: `收件人:${get('p-receiver-name')} 电话:${get('p-receiver-phone')} 送至:${get('p-delivery-addr')} 备注:${get('p-note')||'无'}`,
+    source: 'sender_form',
+    courierCode: appState.courierCode,
+    deliveryAddr: get('p-delivery-addr'),
+    receiverName: get('p-receiver-name'),
+    receiverPhone: get('p-receiver-phone'),
+    pickupTime: get('p-pickup-time'),
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  };
+  const saved = await saveOrders([...loadOrders(), order]);
+  if (!saved) {
+    toast('提交失败，请检查网络或联系送货员重新发送链接');
+    return;
+  }
+  renderSyncedOrders();
+  toast('收货单已提交，送货员刷新后即可看到。');
+  ['p-sender-name','p-sender-phone','p-pickup-addr','p-receiver-name','p-receiver-phone','p-delivery-addr','p-goods','p-weight','p-note'].forEach(id => document.getElementById(id).value = '');
+}
+
+async function submitSenderForm() {
+  return submitPickupForm();
 }
 
 function renderSyncedOrders() {
@@ -1284,6 +1404,7 @@ function toast(msg) {
 
 // ===== INIT =====
 window.addEventListener('DOMContentLoaded', async () => {
+  document.addEventListener('click', closeCopyMenus);
   const params = readSenderParams();
   appState.isSenderMode = params.sender === '1';
   appState.gistId = params.gist || localStorage.getItem(GIST_ID_KEY) || '';
@@ -1317,12 +1438,13 @@ window.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('.nav-tab').forEach(t => t.style.display = 'none');
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById('page-sender').classList.add('active');
-    document.getElementById('sender-form-preview').classList.remove('hidden');
     appState.currentPage = 'sender';
     const courierInfo = document.createElement('div');
     courierInfo.className = appState.gistId && appState.token ? 'alert alert-green' : 'alert alert-blue';
     courierInfo.innerHTML = `正在向送货员 <strong>${esc(appState.courierCode || '未知')}</strong> 提交寄件申请`;
-    document.getElementById('sender-form-preview').prepend(courierInfo);
+    openSenderForm(params.form === 'delivery' ? 'delivery' : 'pickup');
+    const activePreview = document.querySelector('.sender-form-preview:not(.hidden)');
+    if (activePreview) activePreview.prepend(courierInfo);
   }
   
   renderActivePage();
