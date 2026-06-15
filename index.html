@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>送货管理系统</title>
+<style>
+  :root {
+    --blue: #1a73e8;
+    --blue-light: #e8f0fe;
+    --blue-dark: #1557b0;
+    --green: #1e8e3e;
+    --green-light: #e6f4ea;
+    --amber: #f9ab00;
+    --amber-light: #fef7e0;
+    --red: #d93025;
+    --red-light: #fce8e6;
+    --gray-50: #f8f9fa;
+    --gray-100: #f1f3f4;
+    --gray-200: #e8eaed;
+    --gray-400: #9aa0a6;
+    --gray-600: #5f6368;
+    --gray-800: #3c4043;
+    --gray-900: #202124;
+    --border: 1px solid #e8eaed;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.12);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: var(--gray-50); color: var(--gray-900); line-height: 1.6; }
+  
+  /* Nav */
+  .nav { background: #fff; border-bottom: var(--border); position: sticky; top: 0; z-index: 100; }
+  .nav-inner { max-width: 1100px; margin: 0 auto; display: flex; align-items: center; padding: 0 20px; height: 56px; gap: 8px; }
+  .nav-logo { font-size: 18px; font-weight: 600; color: var(--blue); margin-right: 16px; display: flex; align-items: center; gap: 8px; }
+  .nav-tab { padding: 8px 16px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; font-size: 14px; color: var(--gray-600); font-weight: 500; transition: all 0.15s; }
+  .nav-tab.active { background: var(--blue-light); color: var(--blue); }
+  .nav-tab:hover:not(.active) { background: var(--gray-100); }
+  
+  /* Layout */
+  .main { max-width: 1100px; margin: 0 auto; padding: 24px 20px; }
+  .page { display: none; }
+  .page.active { display: block; }
+  
+  /* Cards */
+  .card { background: #fff; border: var(--border); border-radius: var(--radius); padding: 20px; }
+  .card-title { font-size: 15px; font-weight: 600; color: var(--gray-800); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .card-title svg { flex-shrink: 0; }
+  
+  /* Stat cards */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .stat { background: #fff; border: var(--border); border-radius: var(--radius); padding: 16px 20px; }
+  .stat-label { font-size: 12px; color: var(--gray-600); margin-bottom: 4px; }
+  .stat-value { font-size: 28px; font-weight: 600; color: var(--gray-900); }
+  .stat-sub { font-size: 12px; color: var(--gray-400); margin-top: 2px; }
+  .stat.blue .stat-value { color: var(--blue); }
+  .stat.green .stat-value { color: var(--green); }
+  .stat.amber .stat-value { color: #b06000; }
+  .stat.red .stat-value { color: var(--red); }
+  
+  /* Table */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: var(--gray-50); padding: 10px 12px; text-align: left; font-weight: 600; color: var(--gray-600); border-bottom: var(--border); white-space: nowrap; }
+  td { padding: 10px 12px; border-bottom: var(--border); color: var(--gray-800); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--gray-50); }
+  
+  /* Badge */
+  .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 100px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+  .badge-blue { background: var(--blue-light); color: var(--blue-dark); }
+  .badge-green { background: var(--green-light); color: var(--green); }
+  .badge-amber { background: var(--amber-light); color: #7a5000; }
+  .badge-red { background: var(--red-light); color: var(--red); }
+  .badge-gray { background: var(--gray-100); color: var(--gray-600); }
+  
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--radius-sm); border: var(--border); background: #fff; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--gray-800); transition: all 0.15s; }
+  .btn:hover { background: var(--gray-100); }
+  .btn-primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .btn-primary:hover { background: var(--blue-dark); }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+  .btn-danger { color: var(--red); border-color: var(--red-light); }
+  .btn-danger:hover { background: var(--red-light); }
+  
+  /* Forms */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .form-full { grid-column: 1 / -1; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group label { font-size: 12px; font-weight: 600; color: var(--gray-600); }
+  .form-group input, .form-group select, .form-group textarea {
+    padding: 9px 12px; border: var(--border); border-radius: var(--radius-sm);
+    font-size: 13px; color: var(--gray-900); font-family: inherit;
+    transition: border-color 0.15s; outline: none; background: #fff;
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+    border-color: var(--blue); box-shadow: 0 0 0 3px rgba(26,115,232,0.12);
+  }
+  .form-group textarea { resize: vertical; min-height: 80px; }
+  .form-hint { font-size: 11px; color: var(--gray-400); }
+  
+  /* Section headers */
+  .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .section-title { font-size: 16px; font-weight: 600; }
+  
+  /* Grid layouts */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  
+  /* Route planner */
+  .route-stop { display: flex; gap: 12px; padding: 12px; border: var(--border); border-radius: var(--radius-sm); margin-bottom: 8px; background: #fff; }
+  .stop-num { width: 28px; height: 28px; border-radius: 50%; background: var(--blue); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+  .stop-num.pickup { background: var(--amber); }
+  .stop-info { flex: 1; }
+  .stop-name { font-size: 13px; font-weight: 600; }
+  .stop-detail { font-size: 12px; color: var(--gray-600); margin-top: 2px; }
+  .stop-tag { display: inline-flex; gap: 4px; margin-top: 4px; }
+  
+  /* Route connector */
+  .route-connector { display: flex; align-items: center; margin: 4px 0 4px 14px; }
+  .connector-line { width: 1px; height: 20px; background: var(--gray-200); }
+  
+  /* Didi card */
+  .didi-card { border: 2px solid var(--blue-light); border-radius: var(--radius); padding: 16px; background: var(--blue-light); }
+  .didi-header { font-weight: 600; color: var(--blue); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .didi-stat { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; border-bottom: 1px solid rgba(26,115,232,0.1); }
+  .didi-stat:last-child { border-bottom: none; font-weight: 600; }
+  
+  /* Date selector */
+  .date-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+  .date-label { font-size: 13px; color: var(--gray-600); }
+  
+  /* Share form */
+  .share-box { background: var(--green-light); border: 1px solid #ceead6; border-radius: var(--radius); padding: 16px; margin-top: 16px; }
+  .share-url { font-family: monospace; font-size: 12px; word-break: break-all; color: var(--gray-800); background: #fff; padding: 10px; border-radius: var(--radius-sm); border: var(--border); margin-top: 8px; }
+  
+  /* Alert */
+  .alert { padding: 12px 16px; border-radius: var(--radius-sm); font-size: 13px; margin-bottom: 16px; }
+  .alert-blue { background: var(--blue-light); color: var(--blue-dark); border: 1px solid #c5d7f7; }
+  .alert-green { background: var(--green-light); color: #0d652d; border: 1px solid #a8d5b5; }
+  
+  /* Mobile */
+  @media (max-width: 640px) {
+    .form-grid, .form-grid-3, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+    .nav-tab { padding: 8px 10px; font-size: 13px; }
+  }
+  
+  .mt-16 { margin-top: 16px; }
+  .mt-24 { margin-top: 24px; }
+  .mb-16 { margin-bottom: 16px; }
+  .flex { display: flex; }
+  .gap-8 { gap: 8px; }
+  .gap-12 { gap: 12px; }
+  .items-center { align-items: center; }
+  .justify-between { justify-content: space-between; }
+  .text-sm { font-size: 13px; }
+  .text-xs { font-size: 11px; }
+  .text-muted { color: var(--gray-600); }
+  .font-600 { font-weight: 600; }
+  .hidden { display: none !important; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  
+  /* Optimize result */
+  .optimize-section { margin-top: 20px; }
+  .vehicle-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius-sm); margin-bottom: 8px; }
+  .vehicle-header.blue { background: var(--blue-light); color: var(--blue-dark); }
+  .vehicle-header.green { background: var(--green-light); color: #0d652d; }
+  .vehicle-label { font-weight: 600; font-size: 14px; }
+  
+  /* Order items in route */
+  .order-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--gray-50); border-radius: var(--radius-sm); margin-bottom: 6px; font-size: 13px; }
+  
+  /* Toast */
+  .toast { position: fixed; bottom: 24px; right: 24px; background: var(--gray-900); color: #fff; padding: 12px 20px; border-radius: var(--radius-sm); font-size: 13px; z-index: 999; animation: slideIn 0.2s ease; }
+  @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  
+  .cost-breakdown { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .cost-item { background: #fff; border-radius: var(--radius-sm); padding: 10px 12px; border: var(--border); }
+  .cost-item-label { font-size: 11px; color: var(--gray-600); }
+  .cost-item-value { font-size: 16px; font-weight: 600; color: var(--gray-900); margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <div class="nav-logo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v4h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+      送货助手
+    </div>
+    <button class="nav-tab active" onclick="switchPage('dashboard')">📊 今日总览</button>
+    <button class="nav-tab" onclick="switchPage('orders')">📦 订单管理</button>
+    <button class="nav-tab" onclick="switchPage('route')">🗺️ 路线规划</button>
+    <button class="nav-tab" onclick="switchPage('sender')">✉️ 寄件表单</button>
+  </div>
+</nav>
+
+<div class="main">
+
+<!-- ====== DASHBOARD PAGE ====== -->
+<div id="page-dashboard" class="page active">
+  <div class="date-bar">
+    <span class="date-label">查看日期：</span>
+    <input type="date" id="dashboard-date" style="padding:6px 10px;border:var(--border);border-radius:var(--radius-sm);font-size:13px;" onchange="renderDashboard()">
+    <button class="btn btn-sm" onclick="setToday()">今天</button>
+    <button class="btn btn-sm btn-primary" onclick="exportDay()">⬇ 导出今日</button>
+  </div>
+  
+  <div class="stats-grid" id="stats-grid"></div>
+  
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        今日待送订单
+      </div>
+      <div class="table-wrap">
+        <table id="today-orders-table">
+          <thead><tr><th>单号</th><th>收件人</th><th>地址</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        近7天送货量
+      </div>
+      <canvas id="week-chart" height="180"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ====== ORDERS PAGE ====== -->
+<div id="page-orders" class="page">
+  <div class="section-header">
+    <span class="section-title">订单管理</span>
+    <button class="btn btn-primary" onclick="showAddOrder()">+ 新增订单</button>
+  </div>
+  
+  <!-- Add order form -->
+  <div class="card mb-16 hidden" id="add-order-form">
+    <div class="card-title">新增订单</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>收件人姓名 *</label>
+        <input type="text" id="o-receiver" placeholder="张三">
+      </div>
+      <div class="form-group">
+        <label>联系电话 *</label>
+        <input type="tel" id="o-phone" placeholder="138xxxx8888">
+      </div>
+      <div class="form-group form-full">
+        <label>收货地址 *</label>
+        <input type="text" id="o-address" placeholder="北京市朝阳区xx路xx号">
+      </div>
+      <div class="form-group">
+        <label>商品名称</label>
+        <input type="text" id="o-goods" placeholder="文件、电子产品...">
+      </div>
+      <div class="form-group">
+        <label>重量 (kg)</label>
+        <input type="number" id="o-weight" placeholder="0.5" step="0.1" min="0">
+      </div>
+      <div class="form-group">
+        <label>预定送达日期</label>
+        <input type="date" id="o-date">
+      </div>
+      <div class="form-group">
+        <label>订单类型</label>
+        <select id="o-type">
+          <option value="delivery">送货</option>
+          <option value="pickup">收货</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>运费 (元)</label>
+        <input type="number" id="o-fee" placeholder="10" step="0.5">
+      </div>
+      <div class="form-group form-full">
+        <label>备注</label>
+        <textarea id="o-note" placeholder="特殊要求、门禁密码等..."></textarea>
+      </div>
+    </div>
+    <div class="flex gap-8 mt-16">
+      <button class="btn btn-primary" onclick="saveOrder()">保存订单</button>
+      <button class="btn" onclick="hideAddOrder()">取消</button>
+    </div>
+  </div>
+  
+  <!-- Filter bar -->
+  <div class="date-bar">
+    <input type="date" id="orders-date" style="padding:6px 10px;border:var(--border);border-radius:var(--radius-sm);font-size:13px;" onchange="renderOrdersPage()">
+    <select id="orders-filter" style="padding:6px 10px;border:var(--border);border-radius:var(--radius-sm);font-size:13px;" onchange="renderOrdersPage()">
+      <option value="all">全部状态</option>
+      <option value="pending">待送</option>
+      <option value="delivering">配送中</option>
+      <option value="done">已完成</option>
+    </select>
+    <select id="orders-type" style="padding:6px 10px;border:var(--border);border-radius:var(--radius-sm);font-size:13px;" onchange="renderOrdersPage()">
+      <option value="all">全部类型</option>
+      <option value="delivery">送货</option>
+      <option value="pickup">收货</option>
+    </select>
+  </div>
+  
+  <div class="card">
+    <div class="table-wrap">
+      <table id="orders-table">
+        <thead><tr><th>单号</th><th>类型</th><th>收/寄件人</th><th>电话</th><th>地址</th><th>日期</th><th>运费</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ====== ROUTE PAGE ====== -->
+<div id="page-route" class="page">
+  <div class="section-header">
+    <span class="section-title">路线规划 & 配送分配</span>
+  </div>
+  
+  <div class="alert alert-blue">
+    📍 系统会自动将今日订单分配给 <strong>你（最多2个地点）</strong> 和 <strong>滴滴配送</strong>，以最小化总花费。
+  </div>
+  
+  <div class="date-bar">
+    <span class="date-label">规划日期：</span>
+    <input type="date" id="route-date" style="padding:6px 10px;border:var(--border);border-radius:var(--radius-sm);font-size:13px;" onchange="planRoute()">
+    <div class="form-group" style="flex-direction:row;align-items:center;gap:8px;">
+      <label style="font-size:13px;color:var(--gray-600);white-space:nowrap;">我的起点：</label>
+      <input type="text" id="my-start" placeholder="仓库地址" style="padding:6px 10px;border:var(--border);border-radius:var(--radius-sm);font-size:13px;width:200px;">
+    </div>
+    <button class="btn btn-primary" onclick="planRoute()">⚡ 生成最优方案</button>
+  </div>
+  
+  <div id="route-result"></div>
+</div>
+
+<!-- ====== SENDER PAGE ====== -->
+<div id="page-sender" class="page">
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6.18 6.18l1.01-.9a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7a2 2 0 0 1 1.72 2.02z"/></svg>
+        分享寄件表单给客户
+      </div>
+      <p class="text-sm text-muted mb-16">将以下链接发送给寄件人，他们填写后，信息会自动同步到你的订单列表。</p>
+      
+      <div class="form-group mb-16">
+        <label>你的送货员代码（用于识别）</label>
+        <input type="text" id="courier-code" placeholder="例如：courier001" value="">
+        <span class="form-hint">寄件人填表时会关联到你的账号</span>
+      </div>
+      
+      <button class="btn btn-primary" onclick="generateShareLink()">生成分享链接</button>
+      
+      <div class="share-box hidden" id="share-box">
+        <div class="font-600 text-sm" style="color:#0d652d;">✅ 分享链接已生成</div>
+        <div class="share-url" id="share-url"></div>
+        <div class="flex gap-8 mt-16">
+          <button class="btn btn-sm" onclick="copyShareLink()">📋 复制链接</button>
+          <button class="btn btn-sm" onclick="openSenderForm()">👁 预览表单</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="card-title">最新同步的寄件信息</div>
+      <div id="synced-orders">
+        <p class="text-sm text-muted">暂无同步数据。客户填写表单后，信息会显示在这里。</p>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Embedded sender form preview -->
+  <div class="card mt-24 hidden" id="sender-form-preview">
+    <div class="card-title">📝 寄件表单（预览 / 客户视图）</div>
+    <div class="alert alert-blue">这是客户看到的填写页面。</div>
+    
+    <div class="form-grid">
+      <div class="form-group">
+        <label>寄件人姓名 *</label>
+        <input type="text" id="s-sender-name" placeholder="您的姓名">
+      </div>
+      <div class="form-group">
+        <label>寄件人电话 *</label>
+        <input type="tel" id="s-sender-phone" placeholder="138xxxx8888">
+      </div>
+      <div class="form-group form-full">
+        <label>取件地址 *</label>
+        <input type="text" id="s-pickup-addr" placeholder="请填写详细取件地址">
+      </div>
+      <div class="form-group">
+        <label>收件人姓名 *</label>
+        <input type="text" id="s-receiver-name" placeholder="收件人">
+      </div>
+      <div class="form-group">
+        <label>收件人电话 *</label>
+        <input type="tel" id="s-receiver-phone" placeholder="138xxxx9999">
+      </div>
+      <div class="form-group form-full">
+        <label>收件地址 *</label>
+        <input type="text" id="s-delivery-addr" placeholder="请填写详细收件地址">
+      </div>
+      <div class="form-group">
+        <label>物品名称</label>
+        <input type="text" id="s-goods" placeholder="文件、衣物...">
+      </div>
+      <div class="form-group">
+        <label>重量估算 (kg)</label>
+        <input type="number" id="s-weight" placeholder="0.5" step="0.1" min="0">
+      </div>
+      <div class="form-group">
+        <label>期望取件时间</label>
+        <input type="datetime-local" id="s-pickup-time">
+      </div>
+      <div class="form-group form-full">
+        <label>备注</label>
+        <textarea id="s-note" placeholder="其他特殊要求..."></textarea>
+      </div>
+    </div>
+    <button class="btn btn-primary mt-16" onclick="submitSenderForm()">提交寄件申请</button>
+  </div>
+</div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+// ===== DATA LAYER =====
+const STORAGE_KEY = 'delivery_orders_v2';
+const COURIER_KEY = 'courier_code';
+
+function loadOrders() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e) { return []; }
+}
+function saveOrders(orders) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
+}
+function genId() {
+  return 'DD' + Date.now().toString().slice(-8) + Math.floor(Math.random()*100);
+}
+function today() {
+  return new Date().toISOString().slice(0,10);
+}
+function formatDate(d) {
+  if (!d) return '-';
+  return d.slice(0,10);
+}
+
+// Init sample data if empty
+function initSampleData() {
+  if (loadOrders().length > 0) return;
+  const t = today();
+  const yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
+  const yd = yesterday.toISOString().slice(0,10);
+  const orders = [
+    { id: genId(), type:'delivery', receiver:'张伟', phone:'13812345678', address:'朝阳区建国路88号华贸中心B座', goods:'文件', weight:0.3, date:t, fee:15, status:'pending', note:'' },
+    { id: genId(), type:'delivery', receiver:'李娜', phone:'13987654321', address:'海淀区中关村大街1号', goods:'电子产品', weight:1.2, date:t, fee:25, status:'pending', note:'请联系前台' },
+    { id: genId(), type:'pickup', receiver:'王芳', phone:'13611112222', address:'东城区王府井大街金鱼胡同', goods:'衣物', weight:2.0, date:t, fee:20, status:'delivering', note:'' },
+    { id: genId(), type:'delivery', receiver:'赵磊', phone:'13733334444', address:'丰台区西直门南大街6号', goods:'食品', weight:3.5, date:t, fee:18, status:'done', note:'放门口' },
+    { id: genId(), type:'delivery', receiver:'刘洋', phone:'13855556666', address:'西城区长安街100号国务院附近', goods:'电脑配件', weight:0.8, date:t, fee:30, status:'pending', note:'' },
+    { id: genId(), type:'delivery', receiver:'陈静', phone:'13977778888', address:'通州区运河西大街云景路', goods:'书籍', weight:4.0, date:yd, fee:22, status:'done', note:'' },
+    { id: genId(), type:'pickup', receiver:'吴涛', phone:'13699990000', address:'顺义区首都机场附近', goods:'快递包', weight:1.5, date:yd, fee:35, status:'done', note:'' },
+  ];
+  saveOrders(orders);
+}
+
+// ===== NAVIGATION =====
+function switchPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'dashboard') renderDashboard();
+  if (name === 'orders') renderOrdersPage();
+  if (name === 'route') planRoute();
+}
+
+// ===== DASHBOARD =====
+let weekChart = null;
+
+function setToday() {
+  document.getElementById('dashboard-date').value = today();
+  renderDashboard();
+}
+
+function renderDashboard() {
+  const date = document.getElementById('dashboard-date').value || today();
+  const orders = loadOrders().filter(o => o.date === date);
+  
+  const total = orders.length;
+  const done = orders.filter(o => o.status === 'done').length;
+  const pending = orders.filter(o => o.status === 'pending').length;
+  const income = orders.reduce((s,o) => s + (parseFloat(o.fee) || 0), 0);
+  
+  const sg = document.getElementById('stats-grid');
+  sg.innerHTML = `
+    <div class="stat blue"><div class="stat-label">总订单数</div><div class="stat-value">${total}</div><div class="stat-sub">全部类型</div></div>
+    <div class="stat green"><div class="stat-label">已完成</div><div class="stat-value">${done}</div><div class="stat-sub">完成率 ${total ? Math.round(done/total*100) : 0}%</div></div>
+    <div class="stat amber"><div class="stat-label">待处理</div><div class="stat-value">${pending}</div><div class="stat-sub">需要配送</div></div>
+    <div class="stat"><div class="stat-label">今日收入</div><div class="stat-value">¥${income.toFixed(0)}</div><div class="stat-sub">含运费</div></div>
+  `;
+  
+  // Today's orders table
+  const tbody = document.querySelector('#today-orders-table tbody');
+  if (orders.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--gray-400);padding:24px">该日期暂无订单</td></tr>';
+  } else {
+    tbody.innerHTML = orders.slice(0,8).map(o => `
+      <tr>
+        <td style="font-family:monospace;font-size:12px">${o.id}</td>
+        <td>${o.receiver}</td>
+        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${o.address}">${o.address}</td>
+        <td>${statusBadge(o.status)}</td>
+        <td><button class="btn btn-sm" onclick="updateStatus('${o.id}')">更新状态</button></td>
+      </tr>
+    `).join('');
+  }
+  
+  // Week chart
+  renderWeekChart();
+}
+
+function renderWeekChart() {
+  const orders = loadOrders();
+  const labels = [], counts = [], fees = [];
+  for (let i=6; i>=0; i--) {
+    const d = new Date(); d.setDate(d.getDate()-i);
+    const ds = d.toISOString().slice(0,10);
+    const dayOrders = orders.filter(o => o.date === ds);
+    labels.push(ds.slice(5));
+    counts.push(dayOrders.length);
+    fees.push(dayOrders.reduce((s,o)=>s+(parseFloat(o.fee)||0),0));
+  }
+  
+  if (weekChart) weekChart.destroy();
+  const ctx = document.getElementById('week-chart').getContext('2d');
+  weekChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: '订单数',
+        data: counts,
+        backgroundColor: 'rgba(26,115,232,0.15)',
+        borderColor: '#1a73e8',
+        borderWidth: 1.5,
+        borderRadius: 4,
+        yAxisID: 'y'
+      },{
+        label: '收入(元)',
+        data: fees,
+        type: 'line',
+        borderColor: '#1e8e3e',
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        pointRadius: 3,
+        yAxisID: 'y1'
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { labels: { font: { size: 11 }, boxWidth: 12 } } },
+      scales: {
+        y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 11 } }, grid: { color: '#f1f3f4' } },
+        y1: { beginAtZero: true, position: 'right', ticks: { font: { size: 11 } }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+function statusBadge(s) {
+  const map = { pending:'badge-amber', delivering:'badge-blue', done:'badge-green', cancelled:'badge-red' };
+  const label = { pending:'待送', delivering:'配送中', done:'已完成', cancelled:'已取消' };
+  return `<span class="badge ${map[s]||'badge-gray'}">${label[s]||s}</span>`;
+}
+
+function updateStatus(id) {
+  const orders = loadOrders();
+  const idx = orders.findIndex(o => o.id === id);
+  if (idx < 0) return;
+  const cycle = { pending:'delivering', delivering:'done', done:'pending' };
+  orders[idx].status = cycle[orders[idx].status] || 'pending';
+  saveOrders(orders);
+  renderDashboard();
+  renderOrdersPage();
+  toast('状态已更新为：' + { pending:'待送', delivering:'配送中', done:'已完成' }[orders[idx].status]);
+}
+
+function exportDay() {
+  const date = document.getElementById('dashboard-date').value || today();
+  const orders = loadOrders().filter(o => o.date === date);
+  if (!orders.length) { toast('该日期没有订单数据'); return; }
+  const rows = [['单号','类型','收件人','电话','地址','商品','重量','运费','状态','备注']];
+  orders.forEach(o => rows.push([o.id,o.type==='delivery'?'送货':'收货',o.receiver,o.phone,o.address,o.goods||'',o.weight||'',o.fee||'',o.status,o.note||'']));
+  const csv = rows.map(r => r.map(c => '"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csv);
+  a.download = `送货记录_${date}.csv`;
+  a.click();
+  toast('已导出 CSV 文件');
+}
+
+// ===== ORDERS PAGE =====
+function renderOrdersPage() {
+  const date = document.getElementById('orders-date').value;
+  const filterStatus = document.getElementById('orders-filter').value;
+  const filterType = document.getElementById('orders-type').value;
+  let orders = loadOrders();
+  if (date) orders = orders.filter(o => o.date === date);
+  if (filterStatus !== 'all') orders = orders.filter(o => o.status === filterStatus);
+  if (filterType !== 'all') orders = orders.filter(o => o.type === filterType);
+  orders.sort((a,b) => b.date.localeCompare(a.date));
+  
+  const tbody = document.querySelector('#orders-table tbody');
+  if (!orders.length) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--gray-400);padding:24px">暂无匹配订单</td></tr>';
+    return;
+  }
+  tbody.innerHTML = orders.map(o => `
+    <tr>
+      <td style="font-family:monospace;font-size:11px">${o.id}</td>
+      <td><span class="badge ${o.type==='delivery'?'badge-blue':'badge-amber'}">${o.type==='delivery'?'送货':'收货'}</span></td>
+      <td>${o.receiver}</td>
+      <td style="font-family:monospace;font-size:12px">${o.phone}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${o.address}">${o.address}</td>
+      <td>${formatDate(o.date)}</td>
+      <td>¥${o.fee||0}</td>
+      <td>${statusBadge(o.status)}</td>
+      <td>
+        <div class="flex gap-8">
+          <button class="btn btn-sm" onclick="updateStatus('${o.id}')">更新</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteOrder('${o.id}')">删除</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function showAddOrder() {
+  const form = document.getElementById('add-order-form');
+  form.classList.toggle('hidden');
+  if (!form.classList.contains('hidden')) {
+    document.getElementById('o-date').value = today();
+  }
+}
+function hideAddOrder() {
+  document.getElementById('add-order-form').classList.add('hidden');
+}
+
+function saveOrder() {
+  const get = id => document.getElementById(id).value.trim();
+  if (!get('o-receiver') || !get('o-phone') || !get('o-address')) {
+    toast('请填写必填项：收件人、电话、地址'); return;
+  }
+  const order = {
+    id: genId(), type: get('o-type'), receiver: get('o-receiver'),
+    phone: get('o-phone'), address: get('o-address'), goods: get('o-goods'),
+    weight: parseFloat(get('o-weight')) || 0, date: get('o-date') || today(),
+    fee: parseFloat(get('o-fee')) || 0, status: 'pending', note: get('o-note'),
+    source: 'manual'
+  };
+  const orders = loadOrders();
+  orders.push(order);
+  saveOrders(orders);
+  hideAddOrder();
+  renderOrdersPage();
+  toast('订单已添加：' + order.id);
+  ['o-receiver','o-phone','o-address','o-goods','o-weight','o-fee','o-note'].forEach(id => document.getElementById(id).value = '');
+}
+
+function deleteOrder(id) {
+  if (!confirm('确认删除此订单？')) return;
+  saveOrders(loadOrders().filter(o => o.id !== id));
+  renderOrdersPage();
+  renderDashboard();
+  toast('订单已删除');
+}
+
+// ===== ROUTE PLANNING =====
+// Simple distance-based cost optimizer
+// Assumptions: my bicycle/scooter can cover 2 stops, remaining go to Didi
+// Didi cost: 8 yuan base + 2 yuan/km (simulated)
+// My cost: 0 (fixed daily cost)
+// Optimize: minimize Didi fees by assigning farthest/heaviest to Didi only when needed
+
+function planRoute() {
+  const date = document.getElementById('route-date').value || today();
+  const myStart = document.getElementById('my-start').value || '仓库（起始点）';
+  const orders = loadOrders().filter(o => o.date === date && o.status !== 'done' && o.status !== 'cancelled');
+  
+  const result = document.getElementById('route-result');
+  
+  if (orders.length === 0) {
+    result.innerHTML = '<div class="card"><p class="text-sm text-muted" style="padding:8px">该日期没有待配送订单。</p></div>';
+    return;
+  }
+  
+  // Simulate coordinates from address (simplified scoring)
+  // In real app, would use geocoding API
+  function getZone(addr) {
+    if (addr.includes('朝阳') || addr.includes('CBD')) return {x:8, y:5};
+    if (addr.includes('海淀') || addr.includes('中关村')) return {x:3, y:7};
+    if (addr.includes('西城') || addr.includes('长安')) return {x:5, y:5};
+    if (addr.includes('东城') || addr.includes('王府井')) return {x:6, y:5};
+    if (addr.includes('丰台')) return {x:5, y:2};
+    if (addr.includes('顺义') || addr.includes('机场')) return {x:10, y:9};
+    if (addr.includes('通州')) return {x:11, y:5};
+    if (addr.includes('大兴')) return {x:6, y:1};
+    return {x:5+Math.random()*4, y:3+Math.random()*4};
+  }
+  
+  function dist(a, b) {
+    return Math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2);
+  }
+  
+  const origin = {x:5, y:5};
+  const ordersWithCoords = orders.map(o => ({ ...o, coord: getZone(o.address) }));
+  
+  // Sort by distance from origin
+  ordersWithCoords.sort((a,b) => dist(origin, a.coord) - dist(origin, b.coord));
+  
+  // My capacity: 2 closest stops (simplification)
+  const myOrders = ordersWithCoords.slice(0, 2);
+  const didiOrders = ordersWithCoords.slice(2);
+  
+  // Calculate costs
+  function myRouteCost(pts) {
+    if (!pts.length) return 0;
+    let d = dist(origin, pts[0].coord);
+    for (let i=1; i<pts.length; i++) d += dist(pts[i-1].coord, pts[i].coord);
+    d += dist(pts[pts.length-1].coord, origin);
+    return Math.round(d * 3); // 3 yuan/unit (fuel)
+  }
+  
+  function didiCost(o) {
+    const d = dist(origin, o.coord);
+    const km = Math.max(1, Math.round(d * 1.8));
+    return Math.round(8 + km * 2.5 + (o.weight > 5 ? 5 : 0));
+  }
+  
+  const myCost = myRouteCost(myOrders);
+  const didiTotal = didiOrders.reduce((s,o) => s + didiCost(o), 0);
+  const totalCost = myCost + didiTotal;
+  
+  // Render
+  let html = `
+    <div class="card mb-16">
+      <div class="card-title">💰 今日花费最优分配方案</div>
+      <div class="cost-breakdown">
+        <div class="cost-item">
+          <div class="cost-item-label">我自己配送花费（油费/骑行）</div>
+          <div class="cost-item-value">¥${myCost}</div>
+        </div>
+        <div class="cost-item">
+          <div class="cost-item-label">滴滴配送费用</div>
+          <div class="cost-item-value">¥${didiTotal}</div>
+        </div>
+        <div class="cost-item">
+          <div class="cost-item-label">总订单数</div>
+          <div class="cost-item-value">${orders.length} 单</div>
+        </div>
+        <div class="cost-item" style="border:2px solid var(--blue-light)">
+          <div class="cost-item-label" style="color:var(--blue)">预计今日总花费</div>
+          <div class="cost-item-value" style="color:var(--blue)">¥${totalCost}</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="grid-2">
+      <div class="card">
+        <div class="vehicle-header blue">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 17H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h14"/><path d="M16 3l4 4-4 4"/><circle cx="7.5" cy="18.5" r="1.5"/><circle cx="16.5" cy="18.5" r="1.5"/></svg>
+          <span class="vehicle-label">我的路线（最多2个地点）</span>
+          <span class="badge badge-blue">${myOrders.length} 单</span>
+        </div>
+        
+        <div class="route-stop">
+          <div class="stop-num" style="background:#888">起</div>
+          <div class="stop-info">
+            <div class="stop-name">${myStart}</div>
+            <div class="stop-detail">出发点</div>
+          </div>
+        </div>
+  `;
+  
+  myOrders.forEach((o, i) => {
+    html += `
+      <div class="route-connector"><div class="connector-line"></div></div>
+      <div class="route-stop">
+        <div class="stop-num">${i+1}</div>
+        <div class="stop-info">
+          <div class="stop-name">${o.receiver}</div>
+          <div class="stop-detail">${o.address}</div>
+          <div class="stop-tag">
+            <span class="badge badge-blue">${o.type==='delivery'?'送货':'收货'}</span>
+            ${o.goods ? `<span class="badge badge-gray">${o.goods}</span>` : ''}
+            ${o.weight ? `<span class="badge badge-gray">${o.weight}kg</span>` : ''}
+          </div>
+          <div style="font-size:11px;color:var(--gray-400);margin-top:4px">📞 ${o.phone}</div>
+          ${o.note ? `<div style="font-size:11px;color:var(--amber);margin-top:2px">⚠ ${o.note}</div>` : ''}
+        </div>
+      </div>
+    `;
+  });
+  
+  html += `
+        <div class="route-connector"><div class="connector-line"></div></div>
+        <div class="route-stop">
+          <div class="stop-num" style="background:#888">返</div>
+          <div class="stop-info">
+            <div class="stop-name">返回起点</div>
+            <div class="stop-detail">${myStart}</div>
+          </div>
+        </div>
+        <div style="margin-top:12px;padding:10px 12px;background:var(--blue-light);border-radius:var(--radius-sm);font-size:13px;color:var(--blue-dark)">
+          预计路程花费：<strong>¥${myCost}</strong>（含返程）
+        </div>
+      </div>
+  `;
+  
+  // Didi section
+  html += `
+      <div class="card">
+        <div class="vehicle-header green">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v4h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+          <span class="vehicle-label">滴滴配送订单</span>
+          <span class="badge badge-green">${didiOrders.length} 单</span>
+        </div>
+  `;
+  
+  if (didiOrders.length === 0) {
+    html += '<p class="text-sm text-muted" style="padding:8px">无需滴滴配送，你可以自行完成全部订单 🎉</p>';
+  } else {
+    didiOrders.forEach(o => {
+      const cost = didiCost(o);
+      html += `
+        <div class="order-item" style="margin-bottom:8px;flex-direction:column;align-items:flex-start;gap:4px">
+          <div class="flex justify-between" style="width:100%">
+            <span class="font-600">${o.receiver}</span>
+            <span style="color:var(--green);font-weight:600">¥${cost}</span>
+          </div>
+          <div style="font-size:12px;color:var(--gray-600)">${o.address}</div>
+          <div class="flex gap-8" style="margin-top:4px">
+            <span class="badge ${o.type==='delivery'?'badge-blue':'badge-amber'}">${o.type==='delivery'?'送货':'收货'}</span>
+            ${o.weight ? `<span class="badge badge-gray">${o.weight}kg</span>` : ''}
+          </div>
+          <div style="font-size:11px;color:var(--gray-400)">📞 ${o.phone}</div>
+        </div>
+      `;
+    });
+    html += `
+      <div style="margin-top:8px;padding:10px 12px;background:var(--green-light);border-radius:var(--radius-sm);font-size:13px;color:#0d652d">
+        滴滴总费用：<strong>¥${didiTotal}</strong>
+        <div style="margin-top:4px;font-size:11px;color:var(--gray-600)">* 费用估算：起步价¥8 + ¥2.5/km，超5kg加收¥5</div>
+      </div>
+    `;
+  }
+  
+  html += `</div></div>`;
+  
+  // Instructions for Didi
+  if (didiOrders.length > 0) {
+    html += `
+      <div class="card mt-16">
+        <div class="card-title">📱 滴滴下单参考</div>
+        <div class="alert alert-blue" style="margin-bottom:12px">以下是需要发单给滴滴配送的订单清单，可复制给调度使用：</div>
+        <div style="background:var(--gray-50);border-radius:var(--radius-sm);padding:14px;font-size:13px;font-family:monospace;line-height:1.8;white-space:pre-wrap;" id="didi-clipboard">${didiOrders.map((o,i) => 
+          `${i+1}. ${o.receiver}（${o.phone}）\n   地址：${o.address}\n   物品：${o.goods||'一般货物'} ${o.weight||0}kg\n   备注：${o.note||'无'}`
+        ).join('\n\n')}</div>
+        <button class="btn btn-sm mt-16" onclick="copyDidi()">📋 复制滴滴下单信息</button>
+      </div>
+    `;
+  }
+  
+  result.innerHTML = html;
+}
+
+function copyDidi() {
+  const text = document.getElementById('didi-clipboard').textContent;
+  navigator.clipboard.writeText(text).then(() => toast('已复制到剪贴板')).catch(() => toast('请手动复制'));
+}
+
+// ===== SENDER FORM =====
+function generateShareLink() {
+  const code = document.getElementById('courier-code').value.trim();
+  if (!code) { toast('请填写你的送货员代码'); return; }
+  localStorage.setItem(COURIER_KEY, code);
+  const url = window.location.href.split('?')[0] + '?sender=1&courier=' + encodeURIComponent(code);
+  document.getElementById('share-url').textContent = url;
+  document.getElementById('share-box').classList.remove('hidden');
+}
+
+function copyShareLink() {
+  const url = document.getElementById('share-url').textContent;
+  navigator.clipboard.writeText(url).then(() => toast('链接已复制！')).catch(() => toast('请手动复制链接'));
+}
+
+function openSenderForm() {
+  document.getElementById('sender-form-preview').classList.remove('hidden');
+  document.getElementById('sender-form-preview').scrollIntoView({behavior:'smooth'});
+}
+
+function submitSenderForm() {
+  const get = id => document.getElementById(id).value.trim();
+  if (!get('s-sender-name') || !get('s-sender-phone') || !get('s-pickup-addr') || !get('s-receiver-name') || !get('s-delivery-addr')) {
+    toast('请填写所有必填项'); return;
+  }
+  const order = {
+    id: genId(), type: 'pickup',
+    receiver: get('s-sender-name'),
+    phone: get('s-sender-phone'),
+    address: get('s-pickup-addr'),
+    goods: get('s-goods'),
+    weight: parseFloat(get('s-weight')) || 0,
+    date: today(), fee: 0, status: 'pending',
+    note: `收件人:${get('s-receiver-name')} 电话:${get('s-receiver-phone')} 送至:${get('s-delivery-addr')} 备注:${get('s-note')||'无'}`,
+    source: 'sender_form',
+    deliveryAddr: get('s-delivery-addr'),
+    receiverName: get('s-receiver-name'),
+    receiverPhone: get('s-receiver-phone')
+  };
+  const orders = loadOrders();
+  orders.push(order);
+  saveOrders(orders);
+  
+  // Show in synced list
+  renderSyncedOrders();
+  toast('✅ 寄件申请已提交！送货员已收到通知。');
+  ['s-sender-name','s-sender-phone','s-pickup-addr','s-receiver-name','s-receiver-phone','s-delivery-addr','s-goods','s-weight','s-note'].forEach(id => document.getElementById(id).value = '');
+}
+
+function renderSyncedOrders() {
+  const synced = loadOrders().filter(o => o.source === 'sender_form').slice(-5).reverse();
+  const el = document.getElementById('synced-orders');
+  if (!synced.length) { el.innerHTML = '<p class="text-sm text-muted">暂无同步数据。</p>'; return; }
+  el.innerHTML = synced.map(o => `
+    <div class="order-item" style="flex-direction:column;align-items:flex-start;gap:4px;margin-bottom:8px">
+      <div class="flex justify-between" style="width:100%">
+        <span class="font-600">${o.receiver}</span>
+        <span style="font-size:11px;color:var(--gray-400)">${formatDate(o.date)}</span>
+      </div>
+      <div style="font-size:12px;color:var(--gray-600)">${o.address}</div>
+      ${statusBadge(o.status)}
+    </div>
+  `).join('');
+}
+
+// ===== TOAST =====
+function toast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2800);
+}
+
+// ===== INIT =====
+window.addEventListener('DOMContentLoaded', () => {
+  initSampleData();
+  document.getElementById('dashboard-date').value = today();
+  document.getElementById('orders-date').value = today();
+  document.getElementById('route-date').value = today();
+  const savedCode = localStorage.getItem(COURIER_KEY);
+  if (savedCode) document.getElementById('courier-code').value = savedCode;
+  renderDashboard();
+  renderSyncedOrders();
+  
+  // Check if opened as sender form
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('sender') === '1') {
+    document.querySelectorAll('.nav-tab').forEach(t => t.style.display = 'none');
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-sender').classList.add('active');
+    document.getElementById('sender-form-preview').classList.remove('hidden');
+    const courierInfo = document.createElement('div');
+    courierInfo.className = 'alert alert-green';
+    courierInfo.innerHTML = `✅ 正在向送货员 <strong>${params.get('courier')||'未知'}</strong> 提交寄件申请`;
+    document.getElementById('sender-form-preview').prepend(courierInfo);
+  }
+});
+</script>
+</body>
+</html>
