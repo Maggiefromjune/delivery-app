@@ -183,6 +183,11 @@
   .cost-item { background: #fff; border-radius: var(--radius-sm); padding: 10px 12px; border: var(--border); }
   .cost-item-label { font-size: 11px; color: var(--gray-600); }
   .cost-item-value { font-size: 16px; font-weight: 600; color: var(--gray-900); margin-top: 2px; }
+  .sync-status { font-size: 12px; padding: 10px 12px; border-radius: var(--radius-sm); border: var(--border); background: #fff; color: var(--gray-600); }
+  .sync-status.info { background: var(--blue-light); color: var(--blue-dark); border-color: #c5d7f7; }
+  .sync-status.warn { background: var(--amber-light); color: #7a5000; border-color: #f3dea2; }
+  .sync-status.ok { background: var(--green-light); color: #0d652d; border-color: #cce9d2; }
+  .sync-status.error { background: var(--red-light); color: var(--red); border-color: #f1b6b1; }
 </style>
 </head>
 <body>
@@ -193,10 +198,10 @@
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v4h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
       送货助手
     </div>
-    <button class="nav-tab active" onclick="switchPage('dashboard')">📊 今日总览</button>
-    <button class="nav-tab" onclick="switchPage('orders')">📦 订单管理</button>
-    <button class="nav-tab" onclick="switchPage('route')">🗺️ 路线规划</button>
-    <button class="nav-tab" onclick="switchPage('sender')">✉️ 寄件表单</button>
+    <button class="nav-tab active" onclick="switchPage('dashboard', this)">📊 今日总览</button>
+    <button class="nav-tab" onclick="switchPage('orders', this)">📦 订单管理</button>
+    <button class="nav-tab" onclick="switchPage('route', this)">🗺️ 路线规划</button>
+    <button class="nav-tab" onclick="switchPage('sender', this)">✉️ 寄件表单</button>
   </div>
 </nav>
 
@@ -344,6 +349,31 @@
 
 <!-- ====== SENDER PAGE ====== -->
 <div id="page-sender" class="page">
+  <div class="card mb-16 hidden" id="sync-settings-panel">
+    <div class="form-grid-3">
+      <div class="form-group">
+        <label>送货员代码</label>
+        <input type="text" id="courier-code" placeholder="例如 courier001" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="form-group">
+        <label>Gist ID</label>
+        <input type="text" id="gist-id" placeholder="可从 gist URL 中复制" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="form-group">
+        <label>Gist Token</label>
+        <input type="password" id="gist-token" placeholder="仅 Gist 权限" autocomplete="new-password" spellcheck="false">
+        <span class="form-hint">分享链接会包含此 Token，请使用只给 Gist 写权限的专用 Token。</span>
+      </div>
+    </div>
+    <div class="flex gap-8 mt-16">
+      <button class="btn btn-primary" onclick="saveSyncSettings()">保存配置</button>
+      <button class="btn" onclick="createGist()">创建私有 Gist</button>
+      <button class="btn" onclick="syncNow()">立即同步</button>
+    </div>
+    <p class="form-hint mt-16">GitHub Token 只需要 Gist 权限；客户免登录提交时，表单链接会携带这个专用 Token。</p>
+    <div class="sync-status info mt-16" id="sync-status">未配置 Gist，当前仅本机保存</div>
+  </div>
+
   <div class="grid-2">
     <div class="card">
       <div class="card-title">
@@ -351,11 +381,10 @@
         分享寄件表单给客户
       </div>
       <p class="text-sm text-muted mb-16">将以下链接发送给寄件人，他们填写后，信息会自动同步到你的订单列表。</p>
-      
+
       <div class="form-group mb-16">
-        <label>你的送货员代码（用于识别）</label>
-        <input type="text" id="courier-code" placeholder="例如：courier001" value="">
-        <span class="form-hint">寄件人填表时会关联到你的账号</span>
+        <label>送货员代码</label>
+        <input type="text" id="courier-code-share" placeholder="例如 courier001" autocomplete="off" spellcheck="false">
       </div>
       
       <button class="btn btn-primary" onclick="generateShareLink()">生成分享链接</button>
@@ -433,54 +462,292 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script>
-// ===== DATA LAYER =====
+// ===== DATA LAYER: GITHUB GIST + LOCAL CACHE =====
 const STORAGE_KEY = 'delivery_orders_v2';
 const COURIER_KEY = 'courier_code';
+const GIST_ID_KEY = 'delivery_gist_id';
+const GIST_TOKEN_KEY = 'delivery_gist_token';
+const GIST_FILE = 'delivery-orders.json';
 
-function loadOrders() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e) { return []; }
-}
-function saveOrders(orders) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
-}
+const appState = {
+  orders: [],
+  gistId: '',
+  token: '',
+  courierCode: '',
+  currentPage: 'dashboard',
+  isSenderMode: false,
+  isSyncing: false
+};
+
 function genId() {
   return 'DD' + Date.now().toString().slice(-8) + Math.floor(Math.random()*100);
 }
 function today() {
   return new Date().toISOString().slice(0,10);
 }
+function nowIso() {
+  return new Date().toISOString();
+}
 function formatDate(d) {
   if (!d) return '-';
-  return d.slice(0,10);
+  return String(d).slice(0,10);
+}
+function esc(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[ch]));
+}
+function parseJson(text, fallback) {
+  try { return JSON.parse(text); } catch(e) { return fallback; }
+}
+function loadCachedOrders() {
+  return normalizeOrders(parseJson(localStorage.getItem(STORAGE_KEY) || '[]', []));
+}
+function cacheOrders(orders) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
+}
+function normalizeOrders(orders) {
+  const map = new Map();
+  (Array.isArray(orders) ? orders : []).forEach(order => {
+    if (!order || !order.id) return;
+    const normalized = {
+      ...order,
+      type: order.type || 'delivery',
+      status: order.status || 'pending',
+      date: formatDate(order.date || today()),
+      createdAt: order.createdAt || order.updatedAt || nowIso(),
+      updatedAt: order.updatedAt || order.createdAt || nowIso()
+    };
+    const existing = map.get(normalized.id);
+    if (!existing || String(normalized.updatedAt) >= String(existing.updatedAt)) {
+      map.set(normalized.id, normalized);
+    }
+  });
+  return [...map.values()];
+}
+function mergeOrders(...lists) {
+  return normalizeOrders(lists.flat()).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+}
+function loadOrders() {
+  return appState.orders;
+}
+function hasGistSettings() {
+  return Boolean(appState.gistId && appState.token);
+}
+function realOrders(orders = appState.orders) {
+  return normalizeOrders(orders).filter(order => order.source !== 'sample');
+}
+function readSenderParams() {
+  const search = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  return {
+    sender: search.get('sender') || hash.get('sender'),
+    courier: search.get('courier') || hash.get('courier'),
+    gist: search.get('gist') || hash.get('gist'),
+    token: search.get('token') || hash.get('token')
+  };
+}
+function gistHeaders(includeAuth = true) {
+  const headers = {
+    'Accept': 'application/vnd.github+json',
+    'Content-Type': 'application/json',
+    'X-GitHub-Api-Version': '2022-11-28'
+  };
+  if (includeAuth && appState.token) headers.Authorization = `Bearer ${appState.token}`;
+  return headers;
+}
+function getGistFile(gist) {
+  if (!gist || !gist.files) return null;
+  return gist.files[GIST_FILE] || Object.values(gist.files).find(file => file.filename && file.filename.endsWith('.json')) || null;
+}
+async function readGistData() {
+  if (!appState.gistId) throw new Error('缺少 Gist ID');
+  const res = await fetch(`https://api.github.com/gists/${encodeURIComponent(appState.gistId)}`, {
+    headers: gistHeaders(Boolean(appState.token))
+  });
+  if (!res.ok) throw new Error(`读取 Gist 失败：${res.status}`);
+  const gist = await res.json();
+  const file = getGistFile(gist);
+  if (!file || !file.content) return { orders: [] };
+  const data = parseJson(file.content, { orders: [] });
+  return Array.isArray(data) ? { orders: data } : data;
+}
+async function writeGistData(orders) {
+  if (!hasGistSettings()) throw new Error('请先填写 Gist ID 和 Token');
+  const payload = {
+    version: 1,
+    courierCode: appState.courierCode || '',
+    updatedAt: nowIso(),
+    orders: realOrders(orders)
+  };
+  const res = await fetch(`https://api.github.com/gists/${encodeURIComponent(appState.gistId)}`, {
+    method: 'PATCH',
+    headers: gistHeaders(),
+    body: JSON.stringify({
+      files: {
+        [GIST_FILE]: {
+          content: JSON.stringify(payload, null, 2)
+        }
+      }
+    })
+  });
+  if (!res.ok) throw new Error(`写入 Gist 失败：${res.status}`);
+  return payload;
+}
+async function saveOrders(orders, options = {}) {
+  appState.orders = hasGistSettings() ? realOrders(orders) : normalizeOrders(orders);
+  cacheOrders(appState.orders);
+  if (!hasGistSettings()) {
+    updateSyncStatus('未配置 Gist，已保存到本机缓存', 'warn');
+    return true;
+  }
+  try {
+    appState.isSyncing = true;
+    updateSyncStatus('正在同步到 GitHub Gist...', 'info');
+    await writeGistData(appState.orders);
+    updateSyncStatus(`已同步到 Gist：${new Date().toLocaleTimeString()}`, 'ok');
+    return true;
+  } catch (err) {
+    updateSyncStatus(err.message || '同步失败，已保存在本机缓存', 'error');
+    if (!options.silent) toast('同步失败，已保存在本机缓存');
+    return false;
+  } finally {
+    appState.isSyncing = false;
+  }
+}
+async function syncFromGist(options = {}) {
+  if (!appState.gistId) {
+    updateSyncStatus('未配置 Gist，当前仅本机保存', 'warn');
+    return appState.orders;
+  }
+  try {
+    appState.isSyncing = true;
+    updateSyncStatus('正在从 GitHub Gist 拉取...', 'info');
+    const remoteData = await readGistData();
+    const remoteOrders = normalizeOrders(remoteData.orders || []);
+    const localOrders = appState.isSenderMode ? [] : (hasGistSettings() ? realOrders(appState.orders) : appState.orders);
+    const merged = mergeOrders(remoteOrders, localOrders);
+    appState.orders = merged;
+    cacheOrders(merged);
+    if (hasGistSettings() && JSON.stringify(remoteOrders) !== JSON.stringify(merged)) {
+      await writeGistData(merged);
+    }
+    updateSyncStatus(`已同步 ${merged.length} 单：${new Date().toLocaleTimeString()}`, 'ok');
+    return merged;
+  } catch (err) {
+    updateSyncStatus(err.message || '同步失败，已使用本机缓存', 'error');
+    if (!options.silent) toast('同步失败，请检查 Gist ID 和 Token');
+    return appState.orders;
+  } finally {
+    appState.isSyncing = false;
+  }
+}
+async function syncNow() {
+  await syncFromGist();
+  renderActivePage();
+}
+async function saveSyncSettings() {
+  const gistId = document.getElementById('gist-id')?.value.trim() || '';
+  const token = document.getElementById('gist-token')?.value.trim() || '';
+  const code = document.getElementById('courier-code')?.value.trim() || document.getElementById('courier-code-share')?.value.trim() || '';
+  appState.gistId = gistId;
+  appState.token = token;
+  appState.courierCode = code;
+  localStorage.setItem(GIST_ID_KEY, gistId);
+  localStorage.setItem(GIST_TOKEN_KEY, token);
+  localStorage.setItem(COURIER_KEY, code);
+  const shareCode = document.getElementById('courier-code-share');
+  if (shareCode) shareCode.value = code;
+  appState.orders = hasGistSettings() ? realOrders(appState.orders) : appState.orders;
+  cacheOrders(appState.orders);
+  updateSyncStatus('设置已保存', 'ok');
+  if (gistId && token) await syncNow();
+}
+async function createGist() {
+  const token = document.getElementById('gist-token')?.value.trim() || appState.token;
+  if (!token) { toast('请先填写 GitHub Token'); return; }
+  appState.token = token;
+  const code = document.getElementById('courier-code')?.value.trim() || document.getElementById('courier-code-share')?.value.trim() || appState.courierCode || '';
+  appState.courierCode = code;
+  try {
+    updateSyncStatus('正在创建私有 Gist...', 'info');
+    appState.orders = realOrders(appState.orders);
+    cacheOrders(appState.orders);
+    const payload = {
+      version: 1,
+      courierCode: code,
+      updatedAt: nowIso(),
+      orders: realOrders(appState.orders)
+    };
+    const res = await fetch('https://api.github.com/gists', {
+      method: 'POST',
+      headers: gistHeaders(),
+      body: JSON.stringify({
+        description: 'Delivery app synced data',
+        public: false,
+        files: {
+          [GIST_FILE]: {
+            content: JSON.stringify(payload, null, 2)
+          }
+        }
+      })
+    });
+    if (!res.ok) throw new Error(`创建 Gist 失败：${res.status}`);
+    const gist = await res.json();
+    appState.gistId = gist.id;
+    localStorage.setItem(GIST_ID_KEY, gist.id);
+    localStorage.setItem(GIST_TOKEN_KEY, token);
+    localStorage.setItem(COURIER_KEY, code);
+    const gistInput = document.getElementById('gist-id');
+    if (gistInput) gistInput.value = gist.id;
+    const shareCode = document.getElementById('courier-code-share');
+    if (shareCode) shareCode.value = code;
+    updateSyncStatus('私有 Gist 已创建并保存', 'ok');
+    toast('私有 Gist 已创建');
+  } catch (err) {
+    updateSyncStatus(err.message || '创建失败', 'error');
+    toast('创建 Gist 失败，请检查 Token 权限');
+  }
+}
+function updateSyncStatus(message, tone = 'info') {
+  const el = document.getElementById('sync-status');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `sync-status ${tone}`;
 }
 
-// Init sample data if empty
+// Init sample data if empty and no remote storage is configured
 function initSampleData() {
-  if (loadOrders().length > 0) return;
+  if (appState.orders.length > 0 || appState.gistId) return;
   const t = today();
   const yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
   const yd = yesterday.toISOString().slice(0,10);
-  const orders = [
-    { id: genId(), type:'delivery', receiver:'张伟', phone:'13812345678', address:'朝阳区建国路88号华贸中心B座', goods:'文件', weight:0.3, date:t, fee:15, status:'pending', note:'' },
-    { id: genId(), type:'delivery', receiver:'李娜', phone:'13987654321', address:'海淀区中关村大街1号', goods:'电子产品', weight:1.2, date:t, fee:25, status:'pending', note:'请联系前台' },
-    { id: genId(), type:'pickup', receiver:'王芳', phone:'13611112222', address:'东城区王府井大街金鱼胡同', goods:'衣物', weight:2.0, date:t, fee:20, status:'delivering', note:'' },
-    { id: genId(), type:'delivery', receiver:'赵磊', phone:'13733334444', address:'丰台区西直门南大街6号', goods:'食品', weight:3.5, date:t, fee:18, status:'done', note:'放门口' },
-    { id: genId(), type:'delivery', receiver:'刘洋', phone:'13855556666', address:'西城区长安街100号国务院附近', goods:'电脑配件', weight:0.8, date:t, fee:30, status:'pending', note:'' },
-    { id: genId(), type:'delivery', receiver:'陈静', phone:'13977778888', address:'通州区运河西大街云景路', goods:'书籍', weight:4.0, date:yd, fee:22, status:'done', note:'' },
-    { id: genId(), type:'pickup', receiver:'吴涛', phone:'13699990000', address:'顺义区首都机场附近', goods:'快递包', weight:1.5, date:yd, fee:35, status:'done', note:'' },
-  ];
-  saveOrders(orders);
+  appState.orders = normalizeOrders([
+    { id: genId(), type:'delivery', receiver:'张伟', phone:'13812345678', address:'朝阳区建国路88号华贸中心B座', goods:'文件', weight:0.3, date:t, fee:15, status:'pending', note:'', source:'sample' },
+    { id: genId(), type:'delivery', receiver:'李娜', phone:'13987654321', address:'海淀区中关村大街1号', goods:'电子产品', weight:1.2, date:t, fee:25, status:'pending', note:'请联系前台', source:'sample' },
+    { id: genId(), type:'pickup', receiver:'王芳', phone:'13611112222', address:'东城区王府井大街金鱼胡同', goods:'衣物', weight:2.0, date:t, fee:20, status:'delivering', note:'', source:'sample' },
+    { id: genId(), type:'delivery', receiver:'赵磊', phone:'13733334444', address:'丰台区西直门南大街6号', goods:'食品', weight:3.5, date:t, fee:18, status:'done', note:'放门口', source:'sample' },
+    { id: genId(), type:'delivery', receiver:'刘洋', phone:'13855556666', address:'西城区长安街100号国务院附近', goods:'电脑配件', weight:0.8, date:t, fee:30, status:'pending', note:'', source:'sample' },
+    { id: genId(), type:'delivery', receiver:'陈静', phone:'13977778888', address:'通州区运河西大街云景路', goods:'书籍', weight:4.0, date:yd, fee:22, status:'done', note:'', source:'sample' },
+    { id: genId(), type:'pickup', receiver:'吴涛', phone:'13699990000', address:'顺义区首都机场附近', goods:'快递包', weight:1.5, date:yd, fee:35, status:'done', note:'', source:'sample' },
+  ]);
+  cacheOrders(appState.orders);
 }
 
 // ===== NAVIGATION =====
-function switchPage(name) {
+function switchPage(name, tabEl) {
+  appState.currentPage = name;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
-  event.target.classList.add('active');
-  if (name === 'dashboard') renderDashboard();
-  if (name === 'orders') renderOrdersPage();
-  if (name === 'route') planRoute();
+  if (tabEl) tabEl.classList.add('active');
+  renderActivePage();
+}
+function renderActivePage() {
+  if (appState.currentPage === 'dashboard') renderDashboard();
+  if (appState.currentPage === 'orders') renderOrdersPage();
+  if (appState.currentPage === 'route') planRoute();
+  renderSyncedOrders();
 }
 
 // ===== DASHBOARD =====
@@ -494,7 +761,6 @@ function setToday() {
 function renderDashboard() {
   const date = document.getElementById('dashboard-date').value || today();
   const orders = loadOrders().filter(o => o.date === date);
-  
   const total = orders.length;
   const done = orders.filter(o => o.status === 'done').length;
   const pending = orders.filter(o => o.status === 'pending').length;
@@ -508,23 +774,20 @@ function renderDashboard() {
     <div class="stat"><div class="stat-label">今日收入</div><div class="stat-value">¥${income.toFixed(0)}</div><div class="stat-sub">含运费</div></div>
   `;
   
-  // Today's orders table
   const tbody = document.querySelector('#today-orders-table tbody');
   if (orders.length === 0) {
     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--gray-400);padding:24px">该日期暂无订单</td></tr>';
   } else {
     tbody.innerHTML = orders.slice(0,8).map(o => `
       <tr>
-        <td style="font-family:monospace;font-size:12px">${o.id}</td>
-        <td>${o.receiver}</td>
-        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${o.address}">${o.address}</td>
+        <td style="font-family:monospace;font-size:12px">${esc(o.id)}</td>
+        <td>${esc(o.receiver)}</td>
+        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(o.address)}">${esc(o.address)}</td>
         <td>${statusBadge(o.status)}</td>
-        <td><button class="btn btn-sm" onclick="updateStatus('${o.id}')">更新状态</button></td>
+        <td><button class="btn btn-sm" onclick="updateStatus('${esc(o.id)}')">更新状态</button></td>
       </tr>
     `).join('');
   }
-  
-  // Week chart
   renderWeekChart();
 }
 
@@ -541,7 +804,9 @@ function renderWeekChart() {
   }
   
   if (weekChart) weekChart.destroy();
-  const ctx = document.getElementById('week-chart').getContext('2d');
+  const canvas = document.getElementById('week-chart');
+  if (!window.Chart || !canvas) return;
+  const ctx = canvas.getContext('2d');
   weekChart = new Chart(ctx, {
     type: 'bar',
     data: {
@@ -579,18 +844,18 @@ function renderWeekChart() {
 function statusBadge(s) {
   const map = { pending:'badge-amber', delivering:'badge-blue', done:'badge-green', cancelled:'badge-red' };
   const label = { pending:'待送', delivering:'配送中', done:'已完成', cancelled:'已取消' };
-  return `<span class="badge ${map[s]||'badge-gray'}">${label[s]||s}</span>`;
+  return `<span class="badge ${map[s]||'badge-gray'}">${esc(label[s]||s)}</span>`;
 }
 
-function updateStatus(id) {
+async function updateStatus(id) {
+  await syncFromGist({ silent: true });
   const orders = loadOrders();
   const idx = orders.findIndex(o => o.id === id);
   if (idx < 0) return;
   const cycle = { pending:'delivering', delivering:'done', done:'pending' };
-  orders[idx].status = cycle[orders[idx].status] || 'pending';
-  saveOrders(orders);
-  renderDashboard();
-  renderOrdersPage();
+  orders[idx] = { ...orders[idx], status: cycle[orders[idx].status] || 'pending', updatedAt: nowIso() };
+  await saveOrders(orders);
+  renderActivePage();
   toast('状态已更新为：' + { pending:'待送', delivering:'配送中', done:'已完成' }[orders[idx].status]);
 }
 
@@ -613,11 +878,11 @@ function renderOrdersPage() {
   const date = document.getElementById('orders-date').value;
   const filterStatus = document.getElementById('orders-filter').value;
   const filterType = document.getElementById('orders-type').value;
-  let orders = loadOrders();
+  let orders = [...loadOrders()];
   if (date) orders = orders.filter(o => o.date === date);
   if (filterStatus !== 'all') orders = orders.filter(o => o.status === filterStatus);
   if (filterType !== 'all') orders = orders.filter(o => o.type === filterType);
-  orders.sort((a,b) => b.date.localeCompare(a.date));
+  orders.sort((a,b) => String(b.date).localeCompare(String(a.date)));
   
   const tbody = document.querySelector('#orders-table tbody');
   if (!orders.length) {
@@ -626,18 +891,18 @@ function renderOrdersPage() {
   }
   tbody.innerHTML = orders.map(o => `
     <tr>
-      <td style="font-family:monospace;font-size:11px">${o.id}</td>
+      <td style="font-family:monospace;font-size:11px">${esc(o.id)}</td>
       <td><span class="badge ${o.type==='delivery'?'badge-blue':'badge-amber'}">${o.type==='delivery'?'送货':'收货'}</span></td>
-      <td>${o.receiver}</td>
-      <td style="font-family:monospace;font-size:12px">${o.phone}</td>
-      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${o.address}">${o.address}</td>
-      <td>${formatDate(o.date)}</td>
-      <td>¥${o.fee||0}</td>
+      <td>${esc(o.receiver)}</td>
+      <td style="font-family:monospace;font-size:12px">${esc(o.phone)}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(o.address)}">${esc(o.address)}</td>
+      <td>${esc(formatDate(o.date))}</td>
+      <td>¥${esc(o.fee||0)}</td>
       <td>${statusBadge(o.status)}</td>
       <td>
         <div class="flex gap-8">
-          <button class="btn btn-sm" onclick="updateStatus('${o.id}')">更新</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteOrder('${o.id}')">删除</button>
+          <button class="btn btn-sm" onclick="updateStatus('${esc(o.id)}')">更新</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteOrder('${esc(o.id)}')">删除</button>
         </div>
       </td>
     </tr>
@@ -655,47 +920,39 @@ function hideAddOrder() {
   document.getElementById('add-order-form').classList.add('hidden');
 }
 
-function saveOrder() {
+async function saveOrder() {
   const get = id => document.getElementById(id).value.trim();
   if (!get('o-receiver') || !get('o-phone') || !get('o-address')) {
     toast('请填写必填项：收件人、电话、地址'); return;
   }
+  await syncFromGist({ silent: true });
   const order = {
     id: genId(), type: get('o-type'), receiver: get('o-receiver'),
     phone: get('o-phone'), address: get('o-address'), goods: get('o-goods'),
     weight: parseFloat(get('o-weight')) || 0, date: get('o-date') || today(),
     fee: parseFloat(get('o-fee')) || 0, status: 'pending', note: get('o-note'),
-    source: 'manual'
+    source: 'manual', createdAt: nowIso(), updatedAt: nowIso()
   };
-  const orders = loadOrders();
-  orders.push(order);
-  saveOrders(orders);
+  await saveOrders([...loadOrders(), order]);
   hideAddOrder();
-  renderOrdersPage();
+  renderActivePage();
   toast('订单已添加：' + order.id);
   ['o-receiver','o-phone','o-address','o-goods','o-weight','o-fee','o-note'].forEach(id => document.getElementById(id).value = '');
 }
 
-function deleteOrder(id) {
+async function deleteOrder(id) {
   if (!confirm('确认删除此订单？')) return;
-  saveOrders(loadOrders().filter(o => o.id !== id));
-  renderOrdersPage();
-  renderDashboard();
+  await syncFromGist({ silent: true });
+  await saveOrders(loadOrders().filter(o => o.id !== id));
+  renderActivePage();
   toast('订单已删除');
 }
 
 // ===== ROUTE PLANNING =====
-// Simple distance-based cost optimizer
-// Assumptions: my bicycle/scooter can cover 2 stops, remaining go to Didi
-// Didi cost: 8 yuan base + 2 yuan/km (simulated)
-// My cost: 0 (fixed daily cost)
-// Optimize: minimize Didi fees by assigning farthest/heaviest to Didi only when needed
-
 function planRoute() {
   const date = document.getElementById('route-date').value || today();
   const myStart = document.getElementById('my-start').value || '仓库（起始点）';
   const orders = loadOrders().filter(o => o.date === date && o.status !== 'done' && o.status !== 'cancelled');
-  
   const result = document.getElementById('route-result');
   
   if (orders.length === 0) {
@@ -703,43 +960,37 @@ function planRoute() {
     return;
   }
   
-  // Simulate coordinates from address (simplified scoring)
-  // In real app, would use geocoding API
   function getZone(addr) {
-    if (addr.includes('朝阳') || addr.includes('CBD')) return {x:8, y:5};
-    if (addr.includes('海淀') || addr.includes('中关村')) return {x:3, y:7};
-    if (addr.includes('西城') || addr.includes('长安')) return {x:5, y:5};
-    if (addr.includes('东城') || addr.includes('王府井')) return {x:6, y:5};
-    if (addr.includes('丰台')) return {x:5, y:2};
-    if (addr.includes('顺义') || addr.includes('机场')) return {x:10, y:9};
-    if (addr.includes('通州')) return {x:11, y:5};
-    if (addr.includes('大兴')) return {x:6, y:1};
-    return {x:5+Math.random()*4, y:3+Math.random()*4};
+    const value = String(addr || '');
+    if (value.includes('朝阳') || value.includes('CBD')) return {x:8, y:5};
+    if (value.includes('海淀') || value.includes('中关村')) return {x:3, y:7};
+    if (value.includes('西城') || value.includes('长安')) return {x:5, y:5};
+    if (value.includes('东城') || value.includes('王府井')) return {x:6, y:5};
+    if (value.includes('丰台')) return {x:5, y:2};
+    if (value.includes('顺义') || value.includes('机场')) return {x:10, y:9};
+    if (value.includes('通州')) return {x:11, y:5};
+    if (value.includes('大兴')) return {x:6, y:1};
+    const seed = [...value].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+    return {x:5+(seed % 4), y:3+((seed >> 2) % 4)};
   }
-  
   function dist(a, b) {
     return Math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2);
   }
   
   const origin = {x:5, y:5};
   const ordersWithCoords = orders.map(o => ({ ...o, coord: getZone(o.address) }));
-  
-  // Sort by distance from origin
   ordersWithCoords.sort((a,b) => dist(origin, a.coord) - dist(origin, b.coord));
   
-  // My capacity: 2 closest stops (simplification)
   const myOrders = ordersWithCoords.slice(0, 2);
   const didiOrders = ordersWithCoords.slice(2);
   
-  // Calculate costs
   function myRouteCost(pts) {
     if (!pts.length) return 0;
     let d = dist(origin, pts[0].coord);
     for (let i=1; i<pts.length; i++) d += dist(pts[i-1].coord, pts[i].coord);
     d += dist(pts[pts.length-1].coord, origin);
-    return Math.round(d * 3); // 3 yuan/unit (fuel)
+    return Math.round(d * 3);
   }
-  
   function didiCost(o) {
     const d = dist(origin, o.coord);
     const km = Math.max(1, Math.round(d * 1.8));
@@ -750,30 +1001,16 @@ function planRoute() {
   const didiTotal = didiOrders.reduce((s,o) => s + didiCost(o), 0);
   const totalCost = myCost + didiTotal;
   
-  // Render
   let html = `
     <div class="card mb-16">
       <div class="card-title">💰 今日花费最优分配方案</div>
       <div class="cost-breakdown">
-        <div class="cost-item">
-          <div class="cost-item-label">我自己配送花费（油费/骑行）</div>
-          <div class="cost-item-value">¥${myCost}</div>
-        </div>
-        <div class="cost-item">
-          <div class="cost-item-label">滴滴配送费用</div>
-          <div class="cost-item-value">¥${didiTotal}</div>
-        </div>
-        <div class="cost-item">
-          <div class="cost-item-label">总订单数</div>
-          <div class="cost-item-value">${orders.length} 单</div>
-        </div>
-        <div class="cost-item" style="border:2px solid var(--blue-light)">
-          <div class="cost-item-label" style="color:var(--blue)">预计今日总花费</div>
-          <div class="cost-item-value" style="color:var(--blue)">¥${totalCost}</div>
-        </div>
+        <div class="cost-item"><div class="cost-item-label">我自己配送花费（油费/骑行）</div><div class="cost-item-value">¥${myCost}</div></div>
+        <div class="cost-item"><div class="cost-item-label">滴滴配送费用</div><div class="cost-item-value">¥${didiTotal}</div></div>
+        <div class="cost-item"><div class="cost-item-label">总订单数</div><div class="cost-item-value">${orders.length} 单</div></div>
+        <div class="cost-item" style="border:2px solid var(--blue-light)"><div class="cost-item-label" style="color:var(--blue)">预计今日总花费</div><div class="cost-item-value" style="color:var(--blue)">¥${totalCost}</div></div>
       </div>
     </div>
-    
     <div class="grid-2">
       <div class="card">
         <div class="vehicle-header blue">
@@ -781,14 +1018,7 @@ function planRoute() {
           <span class="vehicle-label">我的路线（最多2个地点）</span>
           <span class="badge badge-blue">${myOrders.length} 单</span>
         </div>
-        
-        <div class="route-stop">
-          <div class="stop-num" style="background:#888">起</div>
-          <div class="stop-info">
-            <div class="stop-name">${myStart}</div>
-            <div class="stop-detail">出发点</div>
-          </div>
-        </div>
+        <div class="route-stop"><div class="stop-num" style="background:#888">起</div><div class="stop-info"><div class="stop-name">${esc(myStart)}</div><div class="stop-detail">出发点</div></div></div>
   `;
   
   myOrders.forEach((o, i) => {
@@ -797,15 +1027,15 @@ function planRoute() {
       <div class="route-stop">
         <div class="stop-num">${i+1}</div>
         <div class="stop-info">
-          <div class="stop-name">${o.receiver}</div>
-          <div class="stop-detail">${o.address}</div>
+          <div class="stop-name">${esc(o.receiver)}</div>
+          <div class="stop-detail">${esc(o.address)}</div>
           <div class="stop-tag">
             <span class="badge badge-blue">${o.type==='delivery'?'送货':'收货'}</span>
-            ${o.goods ? `<span class="badge badge-gray">${o.goods}</span>` : ''}
-            ${o.weight ? `<span class="badge badge-gray">${o.weight}kg</span>` : ''}
+            ${o.goods ? `<span class="badge badge-gray">${esc(o.goods)}</span>` : ''}
+            ${o.weight ? `<span class="badge badge-gray">${esc(o.weight)}kg</span>` : ''}
           </div>
-          <div style="font-size:11px;color:var(--gray-400);margin-top:4px">📞 ${o.phone}</div>
-          ${o.note ? `<div style="font-size:11px;color:var(--amber);margin-top:2px">⚠ ${o.note}</div>` : ''}
+          <div style="font-size:11px;color:var(--gray-400);margin-top:4px">📞 ${esc(o.phone)}</div>
+          ${o.note ? `<div style="font-size:11px;color:var(--amber);margin-top:2px">⚠ ${esc(o.note)}</div>` : ''}
         </div>
       </div>
     `;
@@ -813,21 +1043,9 @@ function planRoute() {
   
   html += `
         <div class="route-connector"><div class="connector-line"></div></div>
-        <div class="route-stop">
-          <div class="stop-num" style="background:#888">返</div>
-          <div class="stop-info">
-            <div class="stop-name">返回起点</div>
-            <div class="stop-detail">${myStart}</div>
-          </div>
-        </div>
-        <div style="margin-top:12px;padding:10px 12px;background:var(--blue-light);border-radius:var(--radius-sm);font-size:13px;color:var(--blue-dark)">
-          预计路程花费：<strong>¥${myCost}</strong>（含返程）
-        </div>
+        <div class="route-stop"><div class="stop-num" style="background:#888">返</div><div class="stop-info"><div class="stop-name">返回起点</div><div class="stop-detail">${esc(myStart)}</div></div></div>
+        <div style="margin-top:12px;padding:10px 12px;background:var(--blue-light);border-radius:var(--radius-sm);font-size:13px;color:var(--blue-dark)">预计路程花费：<strong>¥${myCost}</strong>（含返程）</div>
       </div>
-  `;
-  
-  // Didi section
-  html += `
       <div class="card">
         <div class="vehicle-header green">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v4h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
@@ -843,38 +1061,30 @@ function planRoute() {
       const cost = didiCost(o);
       html += `
         <div class="order-item" style="margin-bottom:8px;flex-direction:column;align-items:flex-start;gap:4px">
-          <div class="flex justify-between" style="width:100%">
-            <span class="font-600">${o.receiver}</span>
-            <span style="color:var(--green);font-weight:600">¥${cost}</span>
-          </div>
-          <div style="font-size:12px;color:var(--gray-600)">${o.address}</div>
+          <div class="flex justify-between" style="width:100%"><span class="font-600">${esc(o.receiver)}</span><span style="color:var(--green);font-weight:600">¥${cost}</span></div>
+          <div style="font-size:12px;color:var(--gray-600)">${esc(o.address)}</div>
           <div class="flex gap-8" style="margin-top:4px">
             <span class="badge ${o.type==='delivery'?'badge-blue':'badge-amber'}">${o.type==='delivery'?'送货':'收货'}</span>
-            ${o.weight ? `<span class="badge badge-gray">${o.weight}kg</span>` : ''}
+            ${o.weight ? `<span class="badge badge-gray">${esc(o.weight)}kg</span>` : ''}
           </div>
-          <div style="font-size:11px;color:var(--gray-400)">📞 ${o.phone}</div>
+          <div style="font-size:11px;color:var(--gray-400)">📞 ${esc(o.phone)}</div>
         </div>
       `;
     });
-    html += `
-      <div style="margin-top:8px;padding:10px 12px;background:var(--green-light);border-radius:var(--radius-sm);font-size:13px;color:#0d652d">
-        滴滴总费用：<strong>¥${didiTotal}</strong>
-        <div style="margin-top:4px;font-size:11px;color:var(--gray-600)">* 费用估算：起步价¥8 + ¥2.5/km，超5kg加收¥5</div>
-      </div>
-    `;
+    html += `<div style="margin-top:8px;padding:10px 12px;background:var(--green-light);border-radius:var(--radius-sm);font-size:13px;color:#0d652d">滴滴总费用：<strong>¥${didiTotal}</strong><div style="margin-top:4px;font-size:11px;color:var(--gray-600)">* 费用估算：起步价¥8 + ¥2.5/km，超5kg加收¥5</div></div>`;
   }
   
   html += `</div></div>`;
   
-  // Instructions for Didi
   if (didiOrders.length > 0) {
+    const clipboard = didiOrders.map((o,i) =>
+      `${i+1}. ${o.receiver}（${o.phone}）\n   地址：${o.address}\n   物品：${o.goods||'一般货物'} ${o.weight||0}kg\n   备注：${o.note||'无'}`
+    ).join('\n\n');
     html += `
       <div class="card mt-16">
         <div class="card-title">📱 滴滴下单参考</div>
         <div class="alert alert-blue" style="margin-bottom:12px">以下是需要发单给滴滴配送的订单清单，可复制给调度使用：</div>
-        <div style="background:var(--gray-50);border-radius:var(--radius-sm);padding:14px;font-size:13px;font-family:monospace;line-height:1.8;white-space:pre-wrap;" id="didi-clipboard">${didiOrders.map((o,i) => 
-          `${i+1}. ${o.receiver}（${o.phone}）\n   地址：${o.address}\n   物品：${o.goods||'一般货物'} ${o.weight||0}kg\n   备注：${o.note||'无'}`
-        ).join('\n\n')}</div>
+        <div style="background:var(--gray-50);border-radius:var(--radius-sm);padding:14px;font-size:13px;font-family:monospace;line-height:1.8;white-space:pre-wrap;" id="didi-clipboard">${esc(clipboard)}</div>
         <button class="btn btn-sm mt-16" onclick="copyDidi()">📋 复制滴滴下单信息</button>
       </div>
     `;
@@ -889,12 +1099,34 @@ function copyDidi() {
 }
 
 // ===== SENDER FORM =====
-function generateShareLink() {
-  const code = document.getElementById('courier-code').value.trim();
+async function generateShareLink() {
+  const gistId = document.getElementById('gist-id')?.value.trim() || appState.gistId;
+  const token = document.getElementById('gist-token')?.value.trim() || appState.token;
+  if (gistId) appState.gistId = gistId;
+  if (token) appState.token = token;
+  if (hasGistSettings()) {
+    appState.orders = realOrders(appState.orders);
+    cacheOrders(appState.orders);
+  }
+  const code = document.getElementById('courier-code-share')?.value.trim() || document.getElementById('courier-code')?.value.trim() || appState.courierCode;
+  if (code) {
+    appState.courierCode = code;
+    localStorage.setItem(GIST_ID_KEY, appState.gistId);
+    localStorage.setItem(GIST_TOKEN_KEY, appState.token);
+    localStorage.setItem(COURIER_KEY, code);
+    const settingsCode = document.getElementById('courier-code');
+    if (settingsCode) settingsCode.value = code;
+  }
   if (!code) { toast('请填写你的送货员代码'); return; }
-  localStorage.setItem(COURIER_KEY, code);
-  const url = window.location.href.split('?')[0] + '?sender=1&courier=' + encodeURIComponent(code);
-  document.getElementById('share-url').textContent = url;
+  if (!hasGistSettings()) { toast('请先填写 Gist ID 和 Token'); return; }
+  const url = new URL(window.location.href.split('?')[0]);
+  url.searchParams.set('sender', '1');
+  const hash = new URLSearchParams();
+  hash.set('courier', code);
+  hash.set('gist', appState.gistId);
+  hash.set('token', appState.token);
+  url.hash = hash.toString();
+  document.getElementById('share-url').textContent = url.toString();
   document.getElementById('share-box').classList.remove('hidden');
 }
 
@@ -908,11 +1140,16 @@ function openSenderForm() {
   document.getElementById('sender-form-preview').scrollIntoView({behavior:'smooth'});
 }
 
-function submitSenderForm() {
+async function submitSenderForm() {
   const get = id => document.getElementById(id).value.trim();
   if (!get('s-sender-name') || !get('s-sender-phone') || !get('s-pickup-addr') || !get('s-receiver-name') || !get('s-delivery-addr')) {
     toast('请填写所有必填项'); return;
   }
+  if (appState.isSenderMode && !hasGistSettings()) {
+    toast('该表单链接缺少 Gist 同步配置，无法跨设备提交');
+    return;
+  }
+  await syncFromGist({ silent: true });
   const order = {
     id: genId(), type: 'pickup',
     receiver: get('s-sender-name'),
@@ -923,31 +1160,35 @@ function submitSenderForm() {
     date: today(), fee: 0, status: 'pending',
     note: `收件人:${get('s-receiver-name')} 电话:${get('s-receiver-phone')} 送至:${get('s-delivery-addr')} 备注:${get('s-note')||'无'}`,
     source: 'sender_form',
+    courierCode: appState.courierCode,
     deliveryAddr: get('s-delivery-addr'),
     receiverName: get('s-receiver-name'),
-    receiverPhone: get('s-receiver-phone')
+    receiverPhone: get('s-receiver-phone'),
+    createdAt: nowIso(),
+    updatedAt: nowIso()
   };
-  const orders = loadOrders();
-  orders.push(order);
-  saveOrders(orders);
-  
-  // Show in synced list
+  const saved = await saveOrders([...loadOrders(), order]);
+  if (!saved) {
+    toast('提交失败，请检查网络或联系送货员重新发送链接');
+    return;
+  }
   renderSyncedOrders();
-  toast('✅ 寄件申请已提交！送货员已收到通知。');
+  toast('寄件申请已提交，送货员刷新后即可看到。');
   ['s-sender-name','s-sender-phone','s-pickup-addr','s-receiver-name','s-receiver-phone','s-delivery-addr','s-goods','s-weight','s-note'].forEach(id => document.getElementById(id).value = '');
 }
 
 function renderSyncedOrders() {
-  const synced = loadOrders().filter(o => o.source === 'sender_form').slice(-5).reverse();
   const el = document.getElementById('synced-orders');
+  if (!el) return;
+  const synced = loadOrders().filter(o => o.source === 'sender_form').slice(0,5);
   if (!synced.length) { el.innerHTML = '<p class="text-sm text-muted">暂无同步数据。</p>'; return; }
   el.innerHTML = synced.map(o => `
     <div class="order-item" style="flex-direction:column;align-items:flex-start;gap:4px;margin-bottom:8px">
       <div class="flex justify-between" style="width:100%">
-        <span class="font-600">${o.receiver}</span>
-        <span style="font-size:11px;color:var(--gray-400)">${formatDate(o.date)}</span>
+        <span class="font-600">${esc(o.receiver)}</span>
+        <span style="font-size:11px;color:var(--gray-400)">${esc(formatDate(o.date))}</span>
       </div>
-      <div style="font-size:12px;color:var(--gray-600)">${o.address}</div>
+      <div style="font-size:12px;color:var(--gray-600)">${esc(o.address)}</div>
       ${statusBadge(o.status)}
     </div>
   `).join('');
@@ -963,28 +1204,49 @@ function toast(msg) {
 }
 
 // ===== INIT =====
-window.addEventListener('DOMContentLoaded', () => {
-  initSampleData();
+window.addEventListener('DOMContentLoaded', async () => {
+  const params = readSenderParams();
+  appState.isSenderMode = params.sender === '1';
+  appState.gistId = params.gist || localStorage.getItem(GIST_ID_KEY) || '';
+  appState.token = params.token || localStorage.getItem(GIST_TOKEN_KEY) || '';
+  appState.courierCode = params.courier || localStorage.getItem(COURIER_KEY) || '';
+  appState.orders = loadCachedOrders();
+  
   document.getElementById('dashboard-date').value = today();
   document.getElementById('orders-date').value = today();
   document.getElementById('route-date').value = today();
-  const savedCode = localStorage.getItem(COURIER_KEY);
-  if (savedCode) document.getElementById('courier-code').value = savedCode;
-  renderDashboard();
-  renderSyncedOrders();
   
-  // Check if opened as sender form
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('sender') === '1') {
+  const codeInput = document.getElementById('courier-code');
+  const shareCodeInput = document.getElementById('courier-code-share');
+  const gistInput = document.getElementById('gist-id');
+  const tokenInput = document.getElementById('gist-token');
+  if (codeInput) codeInput.value = appState.courierCode;
+  if (shareCodeInput) shareCodeInput.value = appState.courierCode;
+  if (gistInput) gistInput.value = appState.gistId;
+  if (tokenInput && !appState.isSenderMode) tokenInput.value = appState.token;
+  
+  if (appState.gistId) {
+    await syncFromGist({ silent: true });
+  } else {
+    initSampleData();
+    updateSyncStatus('未配置 Gist，当前仅本机保存', 'warn');
+  }
+  const panel = document.getElementById('sync-settings-panel');
+  if (panel && !appState.isSenderMode) panel.classList.remove('hidden');
+  
+  if (appState.isSenderMode) {
     document.querySelectorAll('.nav-tab').forEach(t => t.style.display = 'none');
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById('page-sender').classList.add('active');
     document.getElementById('sender-form-preview').classList.remove('hidden');
+    appState.currentPage = 'sender';
     const courierInfo = document.createElement('div');
-    courierInfo.className = 'alert alert-green';
-    courierInfo.innerHTML = `✅ 正在向送货员 <strong>${params.get('courier')||'未知'}</strong> 提交寄件申请`;
+    courierInfo.className = appState.gistId && appState.token ? 'alert alert-green' : 'alert alert-blue';
+    courierInfo.innerHTML = `正在向送货员 <strong>${esc(appState.courierCode || '未知')}</strong> 提交寄件申请`;
     document.getElementById('sender-form-preview').prepend(courierInfo);
   }
+  
+  renderActivePage();
 });
 </script>
 </body>
